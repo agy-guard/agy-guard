@@ -142,6 +142,13 @@ func runHookMode() {
 		if action == "" {
 			action = payload.ToolCall.Name
 		}
+		if verdict.Decision == hook.DecisionAllow {
+			if action != "" {
+				verdict.PermissionOverrides = []string{fmt.Sprintf("%s(%s)", payload.ToolCall.Name, action)}
+			} else {
+				verdict.PermissionOverrides = []string{payload.ToolCall.Name}
+			}
+		}
 		logAudit(tier, action, verdict)
 		hook.EmitAndExit(verdict)
 	}
@@ -149,14 +156,19 @@ func runHookMode() {
 	cmd := payload.ExtractCommand()
 	if strings.TrimSpace(cmd) == "" {
 		hook.EmitAndExit(hook.OutputVerdict{
-			Decision: hook.DecisionAllow,
-			Reason:   "No shell command present in tool arguments",
+			Decision:            hook.DecisionAllow,
+			Reason:              "No shell command present in tool arguments",
+			PermissionOverrides: []string{payload.ToolCall.Name},
 		})
 	}
 
 	// applyPolicy применяет стоп-директивы для агента, AFK-режим и защиту от бесконечных циклов
 	evalPolicy := func(v hook.OutputVerdict) hook.OutputVerdict {
-		return applyPolicy(v, cmd, sessionID, cfg, breaker)
+		policed := applyPolicy(v, cmd, sessionID, cfg, breaker)
+		if policed.Decision == hook.DecisionAllow {
+			policed.PermissionOverrides = []string{fmt.Sprintf("command(%s)", cmd)}
+		}
+		return policed
 	}
 
 	// Tier 1: Zero-latency static matcher
@@ -180,6 +192,7 @@ func runHookMode() {
 			cacheInstance = classifier.NewCache(cachePath, time.Duration(cfg.CacheTTLMinutes)*time.Minute)
 			if cachedVerdict, hit := cacheInstance.Get(cfg.Provider, cfg.Model, cmd, transcript); hit {
 				if cachedVerdict.Decision == hook.DecisionAllow {
+					cachedVerdict.PermissionOverrides = []string{fmt.Sprintf("command(%s)", cmd)}
 					logAudit("cache", cmd, cachedVerdict)
 					hook.EmitAndExit(cachedVerdict)
 				}
@@ -255,6 +268,12 @@ func runInit(asPlugin bool) {
 		}
 		fmt.Printf("[OK] Hook registered at: %s\n", hooksPath)
 		fmt.Printf("[OK] Hook command: %s\n", absExecPath)
+	}
+
+	if settingsPath, err := config.EnsureSettingsPermissions("", config.DefaultSettingsAllowList()); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to pre-authorize commands in settings.json: %v\n", err)
+	} else if settingsPath != "" {
+		fmt.Printf("[OK] Pre-authorized standard dev commands in: %s\n", settingsPath)
 	}
 
 	fmt.Println("\nSetup complete! Note:")
@@ -440,6 +459,12 @@ func isCommandTool(toolName string) bool {
 	return lower == "run_command" || lower == "bash" || lower == "shell" || lower == "terminal" || lower == "exec_command" || lower == "execute_command"
 }
 
+// isReadOnlyTool возвращает true, если переданный инструмент является операцией только для чтения
+func isReadOnlyTool(toolName string) bool {
+	lower := strings.ToLower(strings.TrimSpace(toolName))
+	return lower == "read_file" || lower == "view_file" || lower == "read_resource" || lower == "list_resources" || lower == "list_dir" || lower == "list_directory" || lower == "search_web"
+}
+
 // evaluateNonCommandTool выполняет быстрый фильтр (0 мс, без LLM) для файлов и других не-терминальных инструментов.
 // Возвращает (verdict, auditTier, handled).
 func evaluateNonCommandTool(payload *hook.InputPayload, cfg *config.Config, breaker *classifier.LoopBreaker) (hook.OutputVerdict, string, bool) {
@@ -473,7 +498,16 @@ func evaluateNonCommandTool(payload *hook.InputPayload, cfg *config.Config, brea
 		return v, "file_sensitive", true
 	}
 
-	// Проверка 2 (Границы воркспейса): защита от записи за пределы рабочей директории (workspacePaths / cwd)
+	// Чтение нечувствительных файлов разрешено отовсюду (документация, конфиги, библиотеки) за 0 мс
+	if isReadOnlyTool(payload.ToolCall.Name) {
+		return hook.OutputVerdict{
+			Decision: hook.DecisionAllow,
+			Reason:   "Read-only file access allowed",
+		}, "file_read_fast_path", true
+	}
+
+	// Проверка 2 (Границы воркспейса для модифицирующих операций: write_file, edit_file):
+	// защита от записи за пределы рабочей директории (workspacePaths / cwd)
 	if !hook.IsWithinWorkspaces(payload.WorkspacePaths, payload.Cwd, targetFile) {
 		v := applyPolicy(hook.OutputVerdict{
 			Decision: hook.DecisionAsk,

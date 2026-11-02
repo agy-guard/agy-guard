@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 type Config struct {
@@ -47,14 +48,16 @@ func DefaultConfig() *Config {
 				"go test",
 				"go build",
 				"go vet",
+				"go run",
 				"go list",
 				"go mod tidy",
+				"go mod",
 				"go fmt",
 				"go env",
 				"go version",
 				"go doc",
 				"golangci-lint",
-				// Git read-only
+				// Git safe commands
 				"git status",
 				"git diff",
 				"git log",
@@ -66,6 +69,12 @@ func DefaultConfig() *Config {
 				"git ls-files",
 				"git describe",
 				"git blame",
+				"git add",
+				"git commit",
+				"git switch",
+				"git fetch",
+				"git stash list",
+				"git stash show",
 				// Rust
 				"cargo check",
 				"cargo test",
@@ -92,11 +101,14 @@ func DefaultConfig() *Config {
 				"python3 -m unittest",
 				"python -m pytest",
 				"python3 -m pytest",
+				"python3",
+				"python",
 				"ruff check",
 				"black --check",
 				"mypy",
 				"flake8",
 				// Read-only inspection & utility tools
+				"agy-guard",
 				"ls",
 				"cat",
 				"head",
@@ -120,6 +132,11 @@ func DefaultConfig() *Config {
 				"sort",
 				"uniq",
 				"tree",
+				"sed",
+				"awk",
+				"cut",
+				"tr",
+				"xargs",
 			},
 			DenySubstrings: []string{
 				// Secrets, tokens & credentials
@@ -233,10 +250,53 @@ func LoadFromFile(path string) (*Config, error) {
 	if err := json.Unmarshal(data, cfg); err != nil {
 		return DefaultConfig(), fmt.Errorf("parse config.json: %w", err)
 	}
+	cfg.MergeDefaults()
 	if cfg.MaxRetriesBeforeAsk <= 0 {
 		cfg.MaxRetriesBeforeAsk = 2
 	}
 	return cfg, nil
+}
+
+// MergeDefaults объединяет пользовательские правила с актуальными встроенными дефолтами agy-guard,
+// гарантируя, что новые безопасные префиксы будут активны даже при наличии старого config.json на диске.
+func (c *Config) MergeDefaults() {
+	def := DefaultConfig()
+
+	// Объединяем AllowPrefixes
+	allowSet := make(map[string]bool)
+	var mergedAllow []string
+	for _, p := range c.StaticRules.AllowPrefixes {
+		pTrim := strings.TrimSpace(p)
+		if pTrim != "" && !allowSet[pTrim] {
+			allowSet[pTrim] = true
+			mergedAllow = append(mergedAllow, pTrim)
+		}
+	}
+	for _, p := range def.StaticRules.AllowPrefixes {
+		pTrim := strings.TrimSpace(p)
+		if pTrim != "" && !allowSet[pTrim] {
+			allowSet[pTrim] = true
+			mergedAllow = append(mergedAllow, pTrim)
+		}
+	}
+	c.StaticRules.AllowPrefixes = mergedAllow
+
+	// Объединяем DenySubstrings
+	denySet := make(map[string]bool)
+	var mergedDeny []string
+	for _, d := range c.StaticRules.DenySubstrings {
+		if d != "" && !denySet[d] {
+			denySet[d] = true
+			mergedDeny = append(mergedDeny, d)
+		}
+	}
+	for _, d := range def.StaticRules.DenySubstrings {
+		if d != "" && !denySet[d] {
+			denySet[d] = true
+			mergedDeny = append(mergedDeny, d)
+		}
+	}
+	c.StaticRules.DenySubstrings = mergedDeny
 }
 
 // SaveDefault создает ~/.agy-guard/config.json, если он еще не существует.

@@ -133,3 +133,51 @@ func TestSaveToPath(t *testing.T) {
 		t.Errorf("loaded mismatch: %+v", loaded)
 	}
 }
+
+func TestMergeDefaults(t *testing.T) {
+	cfg := &Config{
+		StaticRules: StaticRules{
+			AllowPrefixes:  []string{"my-custom-cli", "go test"},
+			DenySubstrings: []string{"custom-secret"},
+		},
+	}
+
+	cfg.MergeDefaults()
+
+	// Both custom and default prefixes must be present
+	foundCustom := false
+	foundDefault := false
+	for _, p := range cfg.StaticRules.AllowPrefixes {
+		if p == "my-custom-cli" {
+			foundCustom = true
+		}
+		if p == "golangci-lint" {
+			foundDefault = true
+		}
+	}
+
+	if !foundCustom {
+		t.Errorf("expected custom prefix to be preserved")
+	}
+	if !foundDefault {
+		t.Errorf("expected default prefix to be merged")
+	}
+
+	foundCustomDeny := false
+	foundDefaultDeny := false
+	for _, d := range cfg.StaticRules.DenySubstrings {
+		if d == "custom-secret" {
+			foundCustomDeny = true
+		}
+		if d == "sudo " {
+			foundDefaultDeny = true
+		}
+	}
+
+	if !foundCustomDeny {
+		t.Errorf("expected custom deny substring to be preserved")
+	}
+	if !foundDefaultDeny {
+		t.Errorf("expected default deny substring to be merged")
+	}
+}

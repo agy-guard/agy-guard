@@ -168,13 +168,13 @@ $ConfigObj = [ordered]@{
     "max_retries_before_ask"     = 2
     "static_rules"               = [ordered]@{
         "allow_prefixes"  = @(
-            "go test", "go build", "go vet", "go list", "go mod tidy", "go fmt", "go env", "go version", "go doc", "golangci-lint",
-            "git status", "git diff", "git log", "git branch", "git show", "git rev-parse", "git remote", "git tag", "git ls-files", "git describe", "git blame",
+            "go test", "go build", "go vet", "go run", "go list", "go mod tidy", "go mod", "go fmt", "go env", "go version", "go doc", "golangci-lint",
+            "git status", "git diff", "git log", "git branch", "git show", "git rev-parse", "git remote", "git tag", "git ls-files", "git describe", "git blame", "git add", "git commit", "git switch", "git fetch", "git stash list", "git stash show",
             "cargo check", "cargo test", "cargo build", "cargo clippy", "cargo fmt", "cargo doc",
             "npm test", "npm run test", "npm run lint", "npm run build", "npm run typecheck", "npm ls",
             "yarn test", "pnpm test", "npx eslint", "npx tsc", "npx prettier --check", "bun test",
-            "pytest", "python -m unittest", "python3 -m unittest", "python -m pytest", "python3 -m pytest", "ruff check", "black --check", "mypy", "flake8",
-            "ls", "cat", "head", "tail", "grep", "egrep", "fgrep", "rg", "ag", "find", "pwd", "echo", "printf", "wc", "uname", "which", "stat", "file", "diff", "jq", "sort", "uniq", "tree"
+            "pytest", "python -m unittest", "python3 -m unittest", "python -m pytest", "python3 -m pytest", "python3", "python", "ruff check", "black --check", "mypy", "flake8",
+            "agy-guard", "ls", "cat", "head", "tail", "grep", "egrep", "fgrep", "rg", "ag", "find", "pwd", "echo", "printf", "wc", "uname", "which", "stat", "file", "diff", "jq", "sort", "uniq", "tree", "sed", "awk", "cut", "tr", "xargs"
         )
         "deny_substrings" = @(
             ".env", "id_rsa", "id_ed25519", "id_ecdsa", "gh auth token", "aws_secret_access_key", "google_api_key", "gemini_api_key", "openai_api_key", "anthropic_api_key", "authorization: bearer", "bearer eyj", "private key-----", ".git-credentials", "/etc/shadow", "/etc/sudoers",

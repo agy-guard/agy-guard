@@ -38,8 +38,9 @@ type ToolCall struct {
 
 // OutputVerdict — плоский JSON-ответ верхнего уровня, который ждет Antigravity CLI.
 type OutputVerdict struct {
-	Decision Decision `json:"decision"`
-	Reason   string   `json:"reason,omitempty"`
+	Decision            Decision `json:"decision"`
+	Reason              string   `json:"reason,omitempty"`
+	PermissionOverrides []string `json:"permissionOverrides,omitempty"`
 }
 
 // ParseStdin читает и парсит JSON из stdin или любого io.Reader.

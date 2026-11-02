@@ -237,6 +237,32 @@ func TestEvaluateNonCommandTool_OutsideWorkspace(t *testing.T) {
 	}
 }
 
+func TestEvaluateNonCommandTool_ReadOnlyOutsideWorkspace(t *testing.T) {
+	cfg := config.DefaultConfig()
+	tmpDir := t.TempDir()
+	outsideDir := filepath.Join(filepath.Dir(tmpDir), "other_dir", "doc.md")
+	payload := &hook.InputPayload{
+		Cwd: tmpDir,
+		ToolCall: hook.ToolCall{
+			Name: "read_file",
+			Args: map[string]any{
+				"Path": outsideDir,
+			},
+		},
+	}
+
+	verdict, tier, handled := evaluateNonCommandTool(payload, cfg, nil)
+	if !handled {
+		t.Fatalf("expected tool to be handled")
+	}
+	if verdict.Decision != hook.DecisionAllow {
+		t.Errorf("expected DecisionAllow for read_file outside workspace, got %v", verdict.Decision)
+	}
+	if tier != "file_read_fast_path" {
+		t.Errorf("expected tier 'file_read_fast_path', got %q", tier)
+	}
+}
+
 func TestEvaluateNonCommandTool_NoTargetFile(t *testing.T) {
 	cfg := config.DefaultConfig()
 	payload := &hook.InputPayload{

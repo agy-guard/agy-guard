@@ -143,7 +143,11 @@ func TestFormatVerdict(t *testing.T) {
 
 func TestEmit(t *testing.T) {
 	var buf bytes.Buffer
-	verdict := OutputVerdict{Decision: DecisionAllow, Reason: "ok"}
+	verdict := OutputVerdict{
+		Decision:            DecisionAllow,
+		Reason:              "ok",
+		PermissionOverrides: []string{"command(go test)"},
+	}
 	Emit(&buf, verdict)
 
 	var parsed OutputVerdict
@@ -152,6 +156,9 @@ func TestEmit(t *testing.T) {
 	}
 	if parsed.Decision != DecisionAllow || parsed.Reason != "ok" {
 		t.Errorf("unexpected output: %v", parsed)
+	}
+	if len(parsed.PermissionOverrides) != 1 || parsed.PermissionOverrides[0] != "command(go test)" {
+		t.Errorf("unexpected permissionOverrides: %v", parsed.PermissionOverrides)
 	}
 }
 
