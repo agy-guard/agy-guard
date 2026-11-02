@@ -187,6 +187,34 @@ func (b *LoopBreaker) RecordDenyAndCheck(sessionID, cmd string, maxRetries int) 
 	return false, count, cmdClass
 }
 
+// ResetCommand сбрасывает счетчик отказов для конкретной команды в сессии при успешном или разрешенном выполнении.
+func (b *LoopBreaker) ResetCommand(sessionID, cmd string) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	cmdClass := NormalizeCommandClass(cmd)
+	if cmdClass == "" {
+		return nil
+	}
+
+	if strings.TrimSpace(sessionID) == "" {
+		sessionID = "default"
+	}
+
+	store := b.loadStore()
+	if store.Sessions == nil || store.Sessions[sessionID] == nil {
+		return nil
+	}
+
+	if _, exists := store.Sessions[sessionID][cmdClass]; !exists {
+		return nil
+	}
+
+	delete(store.Sessions[sessionID], cmdClass)
+	store.UpdatedAt = time.Now().UnixNano()
+	return b.saveStore(store)
+}
+
 // Reset очищает состояние сессии (или все сессии при пустом sessionID).
 func (b *LoopBreaker) Reset(sessionID string) error {
 	b.mu.Lock()

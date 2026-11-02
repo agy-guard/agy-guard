@@ -91,13 +91,36 @@ func TestApplyPolicy_UnattendedMode_WithLoopBreaker(t *testing.T) {
 		t.Errorf("attempt 1: expected AFK instruction, got %q", res1.Reason)
 	}
 
-	// Attempt 2: Agent tries again -> Loop Breaker escalates to Ask to pause execution
+	// Attempt 2: Agent tries again -> In AFK mode, MUST stay Deny to avoid prompting user!
 	res2 := applyPolicy(askVerdict, "rm -rf ./build", "sess-afk", cfg, breaker)
-	if res2.Decision != hook.DecisionAsk {
-		t.Errorf("attempt 2: expected escalation to ask, got %v", res2.Decision)
+	if res2.Decision != hook.DecisionDeny {
+		t.Errorf("attempt 2: expected deny in AFK mode, got %v", res2.Decision)
 	}
-	if !strings.Contains(res2.Reason, "Loop Breaker") {
-		t.Errorf("attempt 2: expected loop breaker reason, got %q", res2.Reason)
+	if !strings.Contains(res2.Reason, "Loop Breaker") || !strings.Contains(res2.Reason, "User is AFK") {
+		t.Errorf("attempt 2: expected loop breaker AFK reason, got %q", res2.Reason)
+	}
+}
+
+func TestApplyPolicy_AllowResetsCounter(t *testing.T) {
+	tmpDir := t.TempDir()
+	breaker := classifier.NewLoopBreaker(filepath.Join(tmpDir, "state.json"))
+
+	cfg := config.DefaultConfig()
+	cfg.MaxRetriesBeforeAsk = 2
+
+	denyVerdict := hook.OutputVerdict{Decision: hook.DecisionDeny, Reason: "Disallowed"}
+	allowVerdict := hook.OutputVerdict{Decision: hook.DecisionAllow, Reason: "Allowed"}
+
+	// Attempt 1: Deny (Strike 1)
+	_ = applyPolicy(denyVerdict, "git push origin main", "sess-reset", cfg, breaker)
+	if breaker.GetDenyCount("sess-reset", "git push origin main") != 1 {
+		t.Errorf("expected count 1 after deny")
+	}
+
+	// Allowed execution resets count
+	_ = applyPolicy(allowVerdict, "git push origin main", "sess-reset", cfg, breaker)
+	if breaker.GetDenyCount("sess-reset", "git push origin main") != 0 {
+		t.Errorf("expected count 0 after allow, got %d", breaker.GetDenyCount("sess-reset", "git push origin main"))
 	}
 }
 

@@ -111,3 +111,31 @@ func TestLoopBreaker_PersistenceAndReset(t *testing.T) {
 		t.Errorf("expected count=0 after reset, got %d", count)
 	}
 }
+
+func TestLoopBreaker_ResetCommand(t *testing.T) {
+	tmpDir := t.TempDir()
+	statePath := filepath.Join(tmpDir, "session_state.json")
+	b := NewLoopBreaker(statePath)
+
+	b.RecordDeny("sess-cmd", "git add foo.go")
+	b.RecordDeny("sess-cmd", "git add bar.go")
+	b.RecordDeny("sess-cmd", "git push origin main")
+
+	if count := b.GetDenyCount("sess-cmd", "git add"); count != 2 {
+		t.Errorf("expected count=2 for git add, got %d", count)
+	}
+
+	// Reset only git add
+	if err := b.ResetCommand("sess-cmd", "git add foo.go"); err != nil {
+		t.Fatalf("ResetCommand failed: %v", err)
+	}
+
+	if count := b.GetDenyCount("sess-cmd", "git add"); count != 0 {
+		t.Errorf("expected count=0 for git add after ResetCommand, got %d", count)
+	}
+
+	// git push should remain untouched
+	if count := b.GetDenyCount("sess-cmd", "git push"); count != 1 {
+		t.Errorf("expected count=1 for git push, got %d", count)
+	}
+}

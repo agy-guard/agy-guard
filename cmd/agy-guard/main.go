@@ -387,6 +387,9 @@ func runDryRun(cmd string) {
 // applyPolicy применяет стоп-директивы для агента, AFK-режим и защиту от бесконечных циклов
 func applyPolicy(v hook.OutputVerdict, cmd, sessionID string, cfg *config.Config, breaker *classifier.LoopBreaker) hook.OutputVerdict {
 	if v.Decision == hook.DecisionAllow {
+		if breaker != nil {
+			_ = breaker.ResetCommand(sessionID, cmd)
+		}
 		return v
 	}
 
@@ -405,10 +408,21 @@ func applyPolicy(v hook.OutputVerdict, cmd, sessionID string, cfg *config.Config
 		v.Reason = hook.FormatDenyReason(baseReason + ". User is AFK. Do not block on confirmation; find a safe alternative or skip this step.")
 	}
 
-	// 2. Loop breaker при повторных отказах (Strike 2+ -> авто-эскалация в ask)
+	// 2. Loop breaker при повторных отказах (Strike 2+)
 	if v.Decision == hook.DecisionDeny && breaker != nil {
-		escalated, _, cmdClass := breaker.RecordDenyAndCheck(sessionID, cmd, maxRetries)
+		escalated, count, cmdClass := breaker.RecordDenyAndCheck(sessionID, cmd, maxRetries)
 		if escalated {
+			if cfg.UnattendedMode {
+				// В AFK-режиме пользователя нет у экрана — эскалация в ask недопустима.
+				// Возвращаем жесткий отказ со стоп-директивой прервать цикл.
+				return hook.OutputVerdict{
+					Decision: hook.DecisionDeny,
+					Reason: hook.FormatDenyReason(fmt.Sprintf(
+						"Loop Breaker: Agent repeated blocked command (%s) %d times. Operation aborted to prevent infinite loop. User is AFK.",
+						cmdClass, count,
+					)),
+				}
+			}
 			return hook.OutputVerdict{
 				Decision: hook.DecisionAsk,
 				Reason:   fmt.Sprintf("Loop Breaker: Agent repeated a blocked command (%s). Escalating to manual confirmation to prevent an infinite loop.", cmdClass),
