@@ -491,9 +491,14 @@ func matchDirectUserIntent(cmd, userIntent string) (hook.OutputVerdict, bool) {
 
 	lowerCmd := strings.ToLower(cleanCmd)
 
-	// Защита от опасных флагов: git push --force / git reset --hard никогда не разрешаются автоматически
-	if strings.Contains(lowerCmd, "--force") || strings.Contains(lowerCmd, "-f") || strings.Contains(lowerCmd, "--hard") {
+	// Защита от опасных деструктивных операций: git push --force / git reset --hard никогда не разрешаются автоматически
+	if strings.Contains(lowerCmd, "git reset --hard") || strings.Contains(lowerCmd, "git clean -f") {
 		return hook.OutputVerdict{}, false
+	}
+	if strings.HasPrefix(lowerCmd, "git push") {
+		if strings.Contains(lowerCmd, "--force") || strings.Contains(lowerCmd, " -f") || strings.HasSuffix(lowerCmd, " -f") {
+			return hook.OutputVerdict{}, false
+		}
 	}
 
 	// 1. git push

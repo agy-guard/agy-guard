@@ -338,4 +338,10 @@ func TestMatchDirectUserIntent(t *testing.T) {
 	if !ok || verdict.Decision != hook.DecisionAllow {
 		t.Errorf("expected git tag to match release intent")
 	}
+
+	// 7. GitHub release create with -F notes-file flag
+	verdict, ok = matchDirectUserIntent("gh release create v0.3.0 -t 'v0.3.0' -F RELEASE_NOTES_v0.3.0.md", "пуш коммиты и релиз 0.3.0 вместе с текстом релиза")
+	if !ok || verdict.Decision != hook.DecisionAllow {
+		t.Errorf("expected gh release with -F flag to match user intent 'релиз'")
+	}
 }
