@@ -46,13 +46,18 @@ func ReadTranscriptTail(path string, maxBytes int64) string {
 
 // ReadRawTail читает до maxBytes байт с конца файла. В случае любых ошибок возвращает пустую строку.
 func ReadRawTail(path string, maxBytes int64) string {
+	return string(ReadRawTailBytes(path, maxBytes))
+}
+
+// ReadRawTailBytes читает до maxBytes байт с конца файла в виде сырых байт.
+func ReadRawTailBytes(path string, maxBytes int64) []byte {
 	if strings.TrimSpace(path) == "" {
-		return ""
+		return nil
 	}
 	if maxBytes <= 0 {
 		maxBytes = DefaultMaxTranscriptBytes
 	}
-	return string(readRawTail(path, maxBytes))
+	return readRawTail(path, maxBytes)
 }
 
 func readRawTail(path string, maxBytes int64) []byte {

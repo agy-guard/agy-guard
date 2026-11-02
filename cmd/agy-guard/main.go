@@ -182,7 +182,19 @@ func runHookMode() {
 		hook.EmitAndExit(finalVerdict)
 	}
 
-	// Tier 2: Transcript Context Reader
+	// Tier 2: User Intent & Transcript Context
+	userIntent := strings.TrimSpace(payload.LastUserInput)
+	if userIntent == "" && payload.TranscriptPath != "" {
+		rawTail := hook.ReadRawTailBytes(payload.TranscriptPath, hook.DefaultMaxTranscriptBytes)
+		userIntent = hook.ExtractLatestUserRequest(rawTail)
+	}
+
+	if intentVerdict, matched := matchDirectUserIntent(cmd, userIntent); matched {
+		finalVerdict := evalPolicy(intentVerdict)
+		logAudit("tier2_intent", cmd, finalVerdict)
+		hook.EmitAndExit(finalVerdict)
+	}
+
 	var transcript string
 	if cfg.IncludeTranscriptContext && payload.TranscriptPath != "" {
 		transcript = hook.ReadTranscriptTail(payload.TranscriptPath, hook.DefaultMaxTranscriptBytes)
@@ -465,6 +477,65 @@ func applyPolicy(v hook.OutputVerdict, cmd, sessionID string, cfg *config.Config
 	}
 
 	return v
+}
+
+// matchDirectUserIntent мгновенно проверяет явные намерения пользователя из чата (Tier 2 Intent).
+// Если пользователь прямо попросил выполнить команду (например, "пушни коммиты" или "сделай релиз"),
+// безопасные команды (без деструктивных флагов -f/--force) разрешаются без вызова LLM за 0 мс.
+func matchDirectUserIntent(cmd, userIntent string) (hook.OutputVerdict, bool) {
+	cleanCmd := strings.TrimSpace(cmd)
+	cleanIntent := strings.ToLower(strings.TrimSpace(userIntent))
+	if cleanCmd == "" || cleanIntent == "" {
+		return hook.OutputVerdict{}, false
+	}
+
+	lowerCmd := strings.ToLower(cleanCmd)
+
+	// Защита от опасных флагов: git push --force / git reset --hard никогда не разрешаются автоматически
+	if strings.Contains(lowerCmd, "--force") || strings.Contains(lowerCmd, "-f") || strings.Contains(lowerCmd, "--hard") {
+		return hook.OutputVerdict{}, false
+	}
+
+	// 1. git push
+	if strings.HasPrefix(lowerCmd, "git push") {
+		pushKeywords := []string{"push", "пуш", "пушни", "запуш", "отправь коммит", "отправь в гит", "push commit"}
+		for _, kw := range pushKeywords {
+			if strings.Contains(cleanIntent, kw) {
+				return hook.OutputVerdict{
+					Decision: hook.DecisionAllow,
+					Reason:   fmt.Sprintf("User explicitly requested git push in chat (%q)", kw),
+				}, true
+			}
+		}
+	}
+
+	// 2. git tag
+	if strings.HasPrefix(lowerCmd, "git tag") {
+		tagKeywords := []string{"tag", "тег", "релиз", "release"}
+		for _, kw := range tagKeywords {
+			if strings.Contains(cleanIntent, kw) {
+				return hook.OutputVerdict{
+					Decision: hook.DecisionAllow,
+					Reason:   fmt.Sprintf("User explicitly requested git tag / release in chat (%q)", kw),
+				}, true
+			}
+		}
+	}
+
+	// 3. gh release
+	if strings.HasPrefix(lowerCmd, "gh release") {
+		relKeywords := []string{"release", "релиз", "выпусти"}
+		for _, kw := range relKeywords {
+			if strings.Contains(cleanIntent, kw) {
+				return hook.OutputVerdict{
+					Decision: hook.DecisionAllow,
+					Reason:   fmt.Sprintf("User explicitly requested GitHub release in chat (%q)", kw),
+				}, true
+			}
+		}
+	}
+
+	return hook.OutputVerdict{}, false
 }
 
 // isCommandTool возвращает true, если переданное имя инструмента является запуском терминальной команды

@@ -301,3 +301,41 @@ func TestEvaluateNonCommandTool_CommandToolPassthrough(t *testing.T) {
 		t.Errorf("expected run_command NOT to be handled by non-command filter")
 	}
 }
+
+func TestMatchDirectUserIntent(t *testing.T) {
+	// 1. Explicit push request in Russian
+	verdict, ok := matchDirectUserIntent("git push origin main", "пуш коммиты и релиз 0.3.0")
+	if !ok || verdict.Decision != hook.DecisionAllow {
+		t.Errorf("expected git push to match user intent 'пуш'")
+	}
+
+	// 2. English push request
+	verdict, ok = matchDirectUserIntent("git push origin main", "please push these changes to github")
+	if !ok || verdict.Decision != hook.DecisionAllow {
+		t.Errorf("expected git push to match user intent 'push'")
+	}
+
+	// 3. Dangerous force push NEVER matches direct intent
+	_, ok = matchDirectUserIntent("git push -f origin main", "пушни с силой")
+	if ok {
+		t.Errorf("force push must not be allowed via direct intent")
+	}
+
+	// 4. Dangerous --force flag
+	_, ok = matchDirectUserIntent("git push --force origin main", "push now")
+	if ok {
+		t.Errorf("force push must not be allowed via direct intent")
+	}
+
+	// 5. Unrelated intent
+	_, ok = matchDirectUserIntent("git push origin main", "проверь тесты")
+	if ok {
+		t.Errorf("unrelated intent should not match")
+	}
+
+	// 6. Release tag
+	verdict, ok = matchDirectUserIntent("git tag -a v0.3.0 -m 'Release v0.3.0'", "сделай релиз v0.3.0")
+	if !ok || verdict.Decision != hook.DecisionAllow {
+		t.Errorf("expected git tag to match release intent")
+	}
+}

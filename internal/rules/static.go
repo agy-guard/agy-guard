@@ -106,11 +106,11 @@ func matchesAllowPrefix(subCmd string, allowPrefixes []string) bool {
 
 // splitCompoundCommand разделяет составную команду по безопасным операторам (&&, ||, ;, |),
 // учитывая экранирование кавычек. Возвращает false, если обнаружены редиректы вне кавычек,
-// сабшеллы ($(...), `...`), непарные кавычки, переводы строк, одиночный фоновый оператор '&'
+// сабшеллы ($(...), `...`), непарные кавычки, одиночный фоновый оператор '&'
 // или незавершенные операторы цепочки (например, 'cmd |' или '&& cmd').
 func splitCompoundCommand(cmd string) ([]string, bool) {
-	// Опасные сабшеллы и переводы строк запрещены безусловно
-	if strings.ContainsAny(cmd, "`\n\r") || strings.Contains(cmd, "$(") {
+	// Опасные сабшеллы запрещены безусловно
+	if strings.Contains(cmd, "`") || strings.Contains(cmd, "$(") {
 		return nil, false
 	}
 
@@ -139,6 +139,17 @@ func splitCompoundCommand(cmd string) ([]string, bool) {
 
 		if inSingleQuote || inDoubleQuote {
 			current.WriteByte(ch)
+			continue
+		}
+
+		// Перевод строк вне кавычек разделяет команды подобно ';'
+		if ch == '\n' || ch == '\r' {
+			part := strings.TrimSpace(current.String())
+			if part != "" {
+				parts = append(parts, part)
+			}
+			current.Reset()
+			lastWasOperator = false
 			continue
 		}
 
