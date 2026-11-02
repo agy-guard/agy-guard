@@ -127,9 +127,30 @@ if ($ProviderChoice -eq "2") {
 }
 
 # ------------------------------------------------------------------------------
-# 3. Write / Update ~/.agy-guard/config.json
+# 3. Execution Mode Selection (Interactive vs Autonomous AFK)
 # ------------------------------------------------------------------------------
-Write-Host "`n[3/4] Writing configuration to $ConfigFile..." -ForegroundColor Yellow
+Write-Host "`n[3/5] Select Execution Mode..." -ForegroundColor Yellow
+Write-Host "How should agy-guard handle ambiguous or state-changing commands?"
+Write-Host "  1) Interactive Mode  (Recommended - pauses and asks confirmation on suspicious actions)"
+Write-Host "  2) Autonomous / AFK  (Zero prompts - agent autonomously adapts or skips when blocked)"
+
+$ModeChoice = Read-Host "Enter choice [1/2] (default: 1)"
+if (-not $ModeChoice) { $ModeChoice = "1" }
+
+if ($ModeChoice -eq "2") {
+    $UnattendedMode = $true
+    $ModeLabel = "Autonomous / AFK Mode (Zero Prompts)"
+    Write-Host "✓ Selected Autonomous / AFK Mode" -ForegroundColor Yellow
+} else {
+    $UnattendedMode = $false
+    $ModeLabel = "Interactive Mode (Confirmations Enabled)"
+    Write-Host "✓ Selected Interactive Mode" -ForegroundColor Green
+}
+
+# ------------------------------------------------------------------------------
+# 4. Write / Update ~/.agy-guard/config.json
+# ------------------------------------------------------------------------------
+Write-Host "`n[4/5] Writing configuration to $ConfigFile..." -ForegroundColor Yellow
 
 $EscapedExePath = $ExePath.Replace("\", "\\")
 
@@ -143,7 +164,7 @@ $ConfigObj = [ordered]@{
     "enable_audit_log"           = $true
     "enable_cache"               = $true
     "cache_ttl_minutes"          = 10
-    "unattended_mode"            = $false
+    "unattended_mode"            = $UnattendedMode
     "max_retries_before_ask"     = 2
     "static_rules"               = [ordered]@{
         "allow_prefixes"  = @(
@@ -172,9 +193,9 @@ $JsonConfig = $ConfigObj | ConvertTo-Json -Depth 5
 Write-Host "✓ Config saved at: $ConfigFile" -ForegroundColor Green
 
 # ------------------------------------------------------------------------------
-# 4. Register Plugin in Antigravity CLI
+# 5. Register Plugin in Antigravity CLI
 # ------------------------------------------------------------------------------
-Write-Host "`n[4/4] Registering agy-guard as native Antigravity plugin..." -ForegroundColor Yellow
+Write-Host "`n[5/5] Registering agy-guard as native Antigravity plugin..." -ForegroundColor Yellow
 & $ExePath init --plugin
 
 # ------------------------------------------------------------------------------
@@ -188,6 +209,7 @@ Write-Host "🎉 agy-guard installed and configured successfully!" -ForegroundCo
 Write-Host "==================================================================" -ForegroundColor Green
 Write-Host "• Binary path:      $ExePath" -ForegroundColor Cyan
 Write-Host "• Plugin location:  $PluginDir" -ForegroundColor Cyan
+Write-Host "• Execution mode:   $ModeLabel" -ForegroundColor Cyan
 Write-Host "• Configuration:    $ConfigFile" -ForegroundColor Cyan
 Write-Host "• Audit logs:       $ConfigDir\audit" -ForegroundColor Cyan
 Write-Host ""

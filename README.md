@@ -95,6 +95,7 @@ Config path: `~/.agy-guard/config.json`
   "timeout_sec": 8,
   "enable_cache": true,
   "enable_audit_log": true,
+  "unattended_mode": false,
   "static_rules": {
     "allow_prefixes": [
       "go test", "go build", "git status", "git diff", "ls", "grep"
@@ -105,6 +106,10 @@ Config path: `~/.agy-guard/config.json`
   }
 }
 ```
+
+### Execution Modes
+* **Interactive Mode (`unattended_mode: false`):** Prompts for confirmation when an ambiguous or state-changing command is issued.
+* **Autonomous / AFK Mode (`unattended_mode: true`):** Zero user popups. Commands requiring confirmation are converted to `deny` with stop-instructions, prompting the agent to find safe alternatives or proceed autonomously. Explicit commands requested in chat remain authorized via Intent Override.
 
 ### Using Local Ollama (100% Offline)
 Set `"provider": "ollama"` and `"model": "llama3.2"` (or any local model). No API key needed.

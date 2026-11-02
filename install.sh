@@ -146,9 +146,28 @@ else
 fi
 
 # ------------------------------------------------------------------------------
-# 3. Write / Update ~/.agy-guard/config.json
+# 3. Execution Mode Selection (Interactive vs Autonomous AFK)
 # ------------------------------------------------------------------------------
-echo -e "\n${BOLD}[3/4] Writing configuration to $CONFIG_FILE...${RESET}"
+echo -e "\n${BOLD}[3/5] Select Execution Mode...${RESET}"
+echo "How should agy-guard handle ambiguous or state-changing commands?"
+echo -e "  ${BOLD}1)${RESET} Interactive Mode  ${GREEN}(Recommended - pauses and asks confirmation on suspicious actions)${RESET}"
+echo -e "  ${BOLD}2)${RESET} Autonomous / AFK  ${YELLOW}(Zero prompts - agent autonomously adapts or skips when blocked)${RESET}"
+
+MODE_CHOICE=$(prompt_read "Enter choice [1/2] (default: 1): " "1")
+if [ "$MODE_CHOICE" = "2" ]; then
+    UNATTENDED_MODE=true
+    MODE_LABEL="Autonomous / AFK Mode (Zero Prompts)"
+    echo -e "${YELLOW}✓ Selected Autonomous / AFK Mode${RESET}"
+else
+    UNATTENDED_MODE=false
+    MODE_LABEL="Interactive Mode (Confirmations Enabled)"
+    echo -e "${GREEN}✓ Selected Interactive Mode${RESET}"
+fi
+
+# ------------------------------------------------------------------------------
+# 4. Write / Update ~/.agy-guard/config.json
+# ------------------------------------------------------------------------------
+echo -e "\n${BOLD}[4/5] Writing configuration to $CONFIG_FILE...${RESET}"
 
 # Initialize default if config does not exist
 if [ ! -f "$CONFIG_FILE" ]; then
@@ -167,7 +186,7 @@ cat <<EOF > "$CONFIG_FILE"
   "enable_audit_log": true,
   "enable_cache": true,
   "cache_ttl_minutes": 10,
-  "unattended_mode": false,
+  "unattended_mode": $UNATTENDED_MODE,
   "max_retries_before_ask": 2,
   "static_rules": {
     "allow_prefixes": [
@@ -319,9 +338,9 @@ chmod 600 "$CONFIG_FILE"
 echo -e "${GREEN}✓ Config saved at: $CONFIG_FILE (permissions 0600)${RESET}"
 
 # ------------------------------------------------------------------------------
-# 4. Register Plugin in Antigravity CLI
+# 5. Register Plugin in Antigravity CLI
 # ------------------------------------------------------------------------------
-echo -e "\n${BOLD}[4/4] Registering agy-guard as native Antigravity plugin...${RESET}"
+echo -e "\n${BOLD}[5/5] Registering agy-guard as native Antigravity plugin...${RESET}"
 "$BIN_PATH" init --plugin
 
 # ------------------------------------------------------------------------------
@@ -336,6 +355,7 @@ echo -e "${GREEN}${BOLD}🎉 agy-guard installed and configured successfully!${R
 echo -e "${GREEN}${BOLD}==================================================================${RESET}"
 echo -e "• Binary path:      ${CYAN}$BIN_PATH${RESET}"
 echo -e "• Plugin location:  ${CYAN}$PLUGIN_DIR${RESET}"
+echo -e "• Execution mode:   ${CYAN}$MODE_LABEL${RESET}"
 echo -e "• Configuration:    ${CYAN}$CONFIG_FILE${RESET}"
 echo -e "• Audit logs:       ${CYAN}$HOME/.agy-guard/audit/${RESET}"
 echo ""
