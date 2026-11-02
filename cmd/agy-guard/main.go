@@ -189,7 +189,7 @@ func runHookMode() {
 		userIntent = hook.ExtractLatestUserRequest(rawTail)
 	}
 
-	if intentVerdict, matched := matchDirectUserIntent(cmd, userIntent); matched {
+	if intentVerdict, matched := matchDirectUserIntent(cmd, userIntent, cfg.StaticRules.AllowPrefixes); matched {
 		finalVerdict := evalPolicy(intentVerdict)
 		logAudit("tier2_intent", cmd, finalVerdict)
 		hook.EmitAndExit(finalVerdict)
@@ -482,13 +482,47 @@ func applyPolicy(v hook.OutputVerdict, cmd, sessionID string, cfg *config.Config
 // matchDirectUserIntent мгновенно проверяет явные намерения пользователя из чата (Tier 2 Intent).
 // Если пользователь прямо попросил выполнить команду (например, "пушни коммиты" или "сделай релиз"),
 // безопасные команды (без деструктивных флагов -f/--force) разрешаются без вызова LLM за 0 мс.
-func matchDirectUserIntent(cmd, userIntent string) (hook.OutputVerdict, bool) {
+// matchDirectUserIntent мгновенно проверяет явные намерения пользователя из чата (Tier 2 Intent).
+// Если пользователь прямо попросил выполнить команду (например, "пушни коммиты" или "сделай релиз"),
+// безопасные команды (без деструктивных флагов -f/--force) разрешаются без вызова LLM за 0 мс.
+// Также поддерживает составные цепочки (&&, ;, ||), в которых команды из белого списка (например, git add, git commit)
+// комбинируются с командой, запрошенной пользователем (например, git push).
+func matchDirectUserIntent(cmd, userIntent string, allowPrefixes []string) (hook.OutputVerdict, bool) {
 	cleanCmd := strings.TrimSpace(cmd)
 	cleanIntent := strings.ToLower(strings.TrimSpace(userIntent))
 	if cleanCmd == "" || cleanIntent == "" {
 		return hook.OutputVerdict{}, false
 	}
 
+	// Проверяем цепочки команд: если каждый элемент либо разрешен по белому списку, либо по намерению пользователя
+	if parts, ok := rules.SplitCompoundCommand(cleanCmd); ok && len(parts) > 1 {
+		matchedIntentCount := 0
+		var reasons []string
+		for _, part := range parts {
+			if rules.MatchesAllowPrefix(part, allowPrefixes) {
+				continue
+			}
+			partVerdict, partMatched := matchSingleCommandIntent(part, cleanIntent)
+			if !partMatched || partVerdict.Decision != hook.DecisionAllow {
+				return hook.OutputVerdict{}, false
+			}
+			matchedIntentCount++
+			reasons = append(reasons, partVerdict.Reason)
+		}
+		if matchedIntentCount > 0 {
+			return hook.OutputVerdict{
+				Decision: hook.DecisionAllow,
+				Reason:   fmt.Sprintf("Compound command parts matched safe whitelist and chat intent (%s)", strings.Join(reasons, "; ")),
+			}, true
+		}
+		return hook.OutputVerdict{}, false
+	}
+
+	return matchSingleCommandIntent(cleanCmd, cleanIntent)
+}
+
+func matchSingleCommandIntent(cmd, cleanIntent string) (hook.OutputVerdict, bool) {
+	cleanCmd := strings.TrimSpace(cmd)
 	lowerCmd := strings.ToLower(cleanCmd)
 
 	// Защита от опасных деструктивных операций: git push --force / git reset --hard никогда не разрешаются автоматически

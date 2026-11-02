@@ -303,45 +303,53 @@ func TestEvaluateNonCommandTool_CommandToolPassthrough(t *testing.T) {
 }
 
 func TestMatchDirectUserIntent(t *testing.T) {
+	allowPrefixes := []string{"git add", "git commit", "git status"}
+
 	// 1. Explicit push request in Russian
-	verdict, ok := matchDirectUserIntent("git push origin main", "пуш коммиты и релиз 0.3.0")
+	verdict, ok := matchDirectUserIntent("git push origin main", "пуш коммиты и релиз 0.3.0", allowPrefixes)
 	if !ok || verdict.Decision != hook.DecisionAllow {
 		t.Errorf("expected git push to match user intent 'пуш'")
 	}
 
 	// 2. English push request
-	verdict, ok = matchDirectUserIntent("git push origin main", "please push these changes to github")
+	verdict, ok = matchDirectUserIntent("git push origin main", "please push these changes to github", allowPrefixes)
 	if !ok || verdict.Decision != hook.DecisionAllow {
 		t.Errorf("expected git push to match user intent 'push'")
 	}
 
 	// 3. Dangerous force push NEVER matches direct intent
-	_, ok = matchDirectUserIntent("git push -f origin main", "пушни с силой")
+	_, ok = matchDirectUserIntent("git push -f origin main", "пушни с силой", allowPrefixes)
 	if ok {
 		t.Errorf("force push must not be allowed via direct intent")
 	}
 
 	// 4. Dangerous --force flag
-	_, ok = matchDirectUserIntent("git push --force origin main", "push now")
+	_, ok = matchDirectUserIntent("git push --force origin main", "push now", allowPrefixes)
 	if ok {
 		t.Errorf("force push must not be allowed via direct intent")
 	}
 
 	// 5. Unrelated intent
-	_, ok = matchDirectUserIntent("git push origin main", "проверь тесты")
+	_, ok = matchDirectUserIntent("git push origin main", "проверь тесты", allowPrefixes)
 	if ok {
 		t.Errorf("unrelated intent should not match")
 	}
 
 	// 6. Release tag
-	verdict, ok = matchDirectUserIntent("git tag -a v0.3.0 -m 'Release v0.3.0'", "сделай релиз v0.3.0")
+	verdict, ok = matchDirectUserIntent("git tag -a v0.3.0 -m 'Release v0.3.0'", "сделай релиз v0.3.0", allowPrefixes)
 	if !ok || verdict.Decision != hook.DecisionAllow {
 		t.Errorf("expected git tag to match release intent")
 	}
 
 	// 7. GitHub release create with -F notes-file flag
-	verdict, ok = matchDirectUserIntent("gh release create v0.3.0 -t 'v0.3.0' -F RELEASE_NOTES_v0.3.0.md", "пуш коммиты и релиз 0.3.0 вместе с текстом релиза")
+	verdict, ok = matchDirectUserIntent("gh release create v0.3.0 -t 'v0.3.0' -F RELEASE_NOTES_v0.3.0.md", "пуш коммиты и релиз 0.3.0 вместе с текстом релиза", allowPrefixes)
 	if !ok || verdict.Decision != hook.DecisionAllow {
 		t.Errorf("expected gh release with -F flag to match user intent 'релиз'")
+	}
+
+	// 8. Compound command combining whitelist prefixes with intent push
+	verdict, ok = matchDirectUserIntent("git add . && git commit -m 'release' && git push origin main", "пуш коммиты", allowPrefixes)
+	if !ok || verdict.Decision != hook.DecisionAllow {
+		t.Errorf("expected compound command with whitelist + push intent to be allowed")
 	}
 }

@@ -37,7 +37,7 @@ func EvaluateStatic(cmd string, rules config.StaticRules) (hook.OutputVerdict, b
 	}
 
 	// 2. Умная проверка белого списка префиксов (с поддержкой безопасных цепочек &&, ||, ;, |)
-	parts, ok := splitCompoundCommand(trimmed)
+	parts, ok := SplitCompoundCommand(trimmed)
 	if !ok {
 		// Присутствуют опасные редиректы (<, >), сабшеллы ($(...), `...`), переводы строк или фоновый запуск (&)
 		return hook.OutputVerdict{}, false
@@ -45,7 +45,7 @@ func EvaluateStatic(cmd string, rules config.StaticRules) (hook.OutputVerdict, b
 
 	// Проверяем, что КАЖДАЯ подкоманда в цепочке входит в белый список разрешенных префиксов
 	for _, part := range parts {
-		if !matchesAllowPrefix(part, rules.AllowPrefixes) {
+		if !MatchesAllowPrefix(part, rules.AllowPrefixes) {
 			return hook.OutputVerdict{}, false
 		}
 	}
@@ -63,8 +63,8 @@ func EvaluateStatic(cmd string, rules config.StaticRules) (hook.OutputVerdict, b
 	}, true
 }
 
-// matchesAllowPrefix проверяет, что подкоманда строго совпадает с префиксом или начинается с него и пробела.
-func matchesAllowPrefix(subCmd string, allowPrefixes []string) bool {
+// MatchesAllowPrefix проверяет, что подкоманда строго совпадает с префиксом или начинается с него и пробела.
+func MatchesAllowPrefix(subCmd string, allowPrefixes []string) bool {
 	lowerSub := strings.ToLower(strings.TrimSpace(subCmd))
 	if lowerSub == "" {
 		return true
@@ -104,11 +104,11 @@ func matchesAllowPrefix(subCmd string, allowPrefixes []string) bool {
 	return false
 }
 
-// splitCompoundCommand разделяет составную команду по безопасным операторам (&&, ||, ;, |),
+// SplitCompoundCommand разделяет составную команду по безопасным операторам (&&, ||, ;, |),
 // учитывая экранирование кавычек. Возвращает false, если обнаружены редиректы вне кавычек,
 // сабшеллы ($(...), `...`), непарные кавычки, одиночный фоновый оператор '&'
 // или незавершенные операторы цепочки (например, 'cmd |' или '&& cmd').
-func splitCompoundCommand(cmd string) ([]string, bool) {
+func SplitCompoundCommand(cmd string) ([]string, bool) {
 	// Опасные сабшеллы запрещены безусловно
 	if strings.Contains(cmd, "`") || strings.Contains(cmd, "$(") {
 		return nil, false
