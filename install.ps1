@@ -27,14 +27,14 @@ New-Item -ItemType Directory -Force -Path $LocalBinDir | Out-Null
 New-Item -ItemType Directory -Force -Path $PluginDir | Out-Null
 
 # ------------------------------------------------------------------------------
-# 1. Build / Locate Binary
+# 1. Build / Locate / Download Binary
 # ------------------------------------------------------------------------------
-Write-Host "`n[1/4] Building agy-guard binary..." -ForegroundColor Yellow
+Write-Host "`n[1/4] Preparing agy-guard binary..." -ForegroundColor Yellow
 
 $ExePath = Join-Path $LocalBinDir "agy-guard.exe"
 
-if (Get-Command go -ErrorAction SilentlyContinue) {
-    Write-Host "Compiling from source with Go..."
+if ((Test-Path "$ScriptDir\cmd\agy-guard\main.go") -and (Get-Command go -ErrorAction SilentlyContinue)) {
+    Write-Host "Compiling from local source with Go..."
     Push-Location $ScriptDir
     try {
         go build -o "$ScriptDir\agy-guard.exe" .\cmd\agy-guard
@@ -48,7 +48,30 @@ if (Get-Command go -ErrorAction SilentlyContinue) {
     Copy-Item -Path "$ScriptDir\agy-guard.exe" -Destination $ExePath -Force
     Write-Host "✓ Using existing binary installed to: $ExePath" -ForegroundColor Green
 } else {
-    Write-Error "Go compiler ('go') not found and no pre-built agy-guard.exe exists. Please install Go (https://go.dev)."
+    Write-Host "Downloading pre-compiled binary from GitHub Releases (agy-guard/agy-guard)..."
+    try {
+        $Arch = if ([System.Environment]::Is64BitOperatingSystem) { "amd64" } else { "arm64" }
+        $Release = Invoke-RestMethod -Uri "https://api.github.com/repos/agy-guard/agy-guard/releases/latest"
+        $Asset = $Release.assets | Where-Object { $_.name -like "*windows_$Arch.zip" } | Select-Object -First 1
+        if (-not $Asset) {
+            $Asset = $Release.assets | Where-Object { $_.name -like "*windows_amd64.zip" } | Select-Object -First 1
+        }
+        if ($Asset) {
+            $ZipPath = Join-Path $env:TEMP "agy-guard.zip"
+            $ExtractDir = Join-Path $env:TEMP "agy-guard-extract"
+            Invoke-WebRequest -Uri $Asset.browser_download_url -OutFile $ZipPath
+            Expand-Archive -Path $ZipPath -DestinationPath $ExtractDir -Force
+            Copy-Item (Join-Path $ExtractDir "agy-guard.exe") -Destination $ExePath -Force
+            Remove-Item $ZipPath -Force -ErrorAction SilentlyContinue
+            Remove-Item $ExtractDir -Recurse -Force -ErrorAction SilentlyContinue
+            Write-Host "✓ Downloaded and installed to: $ExePath" -ForegroundColor Green
+        } else {
+            throw "No matching release asset found"
+        }
+    } catch {
+        Write-Error "Failed to download binary: $_. Please install Go or download manually."
+        exit 1
+    }
 }
 
 # ------------------------------------------------------------------------------

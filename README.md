@@ -22,17 +22,19 @@ When Antigravity CLI (`agy`) prepares to run a terminal command, `agy-guard` int
 
 ### 1-Line Interactive Installer
 
-The installer prompts for your preferred provider (Gemini or Ollama), sets up your config, compiles the binary, and registers the Antigravity plugin:
+Run this in your terminal to automatically download, install the latest binary, configure your AI provider (Gemini or Ollama), and register the Antigravity plugin:
 
 **macOS & Linux:**
 ```bash
-./install.sh
+curl -fsSL https://raw.githubusercontent.com/agy-guard/agy-guard/main/install.sh | bash
 ```
 
 **Windows (PowerShell):**
 ```powershell
-.\install.ps1
+irm https://raw.githubusercontent.com/agy-guard/agy-guard/main/install.ps1 | iex
 ```
+
+*(Or if you have cloned the repository locally, simply execute `./install.sh` or `.\install.ps1`)*
 
 ---
 

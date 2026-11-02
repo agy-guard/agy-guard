@@ -31,26 +31,67 @@ LOCAL_BIN_DIR="$HOME/.local/bin"
 mkdir -p "$CONFIG_DIR" "$LOCAL_BIN_DIR" "$PLUGIN_DIR"
 
 # ------------------------------------------------------------------------------
-# 1. Build / Locate Binary
+# 1. Build / Locate / Download Binary
 # ------------------------------------------------------------------------------
-echo -e "\n${BOLD}[1/4] Building agy-guard binary...${RESET}"
+echo -e "\n${BOLD}[1/4] Preparing agy-guard binary...${RESET}"
 
-if command -v go >/dev/null 2>&1; then
-    echo "Compiling from source with Go..."
+prompt_read() {
+    local prompt_msg="$1"
+    local default_ans="$2"
+    local user_ans=""
+    if [ -t 0 ]; then
+        read -rp "$prompt_msg" user_ans || true
+    elif [ -e /dev/tty ]; then
+        read -rp "$prompt_msg" user_ans </dev/tty || true
+    fi
+    echo "${user_ans:-$default_ans}"
+}
+
+if [ -f "${SCRIPT_DIR:-}/cmd/agy-guard/main.go" ] && command -v go >/dev/null 2>&1; then
+    echo "Compiling from local source with Go..."
     (cd "$SCRIPT_DIR" && go build -o "$SCRIPT_DIR/agy-guard" ./cmd/agy-guard)
     cp "$SCRIPT_DIR/agy-guard" "$LOCAL_BIN_DIR/agy-guard"
     chmod +x "$LOCAL_BIN_DIR/agy-guard"
     BIN_PATH="$LOCAL_BIN_DIR/agy-guard"
     echo -e "${GREEN}✓ Binary built and installed to: $BIN_PATH${RESET}"
-elif [ -f "$SCRIPT_DIR/agy-guard" ]; then
+elif [ -f "${SCRIPT_DIR:-}/agy-guard" ]; then
     cp "$SCRIPT_DIR/agy-guard" "$LOCAL_BIN_DIR/agy-guard"
     chmod +x "$LOCAL_BIN_DIR/agy-guard"
     BIN_PATH="$LOCAL_BIN_DIR/agy-guard"
     echo -e "${GREEN}✓ Using existing binary installed to: $BIN_PATH${RESET}"
 else
-    echo -e "${RED}Error: Go compiler ('go') not found and no pre-built agy-guard binary exists.${RESET}"
-    echo "Please install Go (https://go.dev) or download a pre-built release binary."
-    exit 1
+    echo "Downloading pre-compiled binary from GitHub Releases (agy-guard/agy-guard)..."
+    OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
+    ARCH="$(uname -m)"
+    case "$ARCH" in
+        x86_64|amd64) ARCH="amd64" ;;
+        arm64|aarch64) ARCH="arm64" ;;
+        *) echo -e "${RED}Unsupported architecture: $ARCH${RESET}"; exit 1 ;;
+    esac
+
+    DOWNLOAD_URL=$(curl -sL https://api.github.com/repos/agy-guard/agy-guard/releases/latest | grep "browser_download_url" | grep "${OS}_${ARCH}\.tar\.gz" | head -n 1 | cut -d '"' -f 4 || true)
+
+    if [ -n "$DOWNLOAD_URL" ]; then
+        TMP_DIR="$(mktemp -d)"
+        echo "Fetching $DOWNLOAD_URL..."
+        curl -sL "$DOWNLOAD_URL" -o "$TMP_DIR/archive.tar.gz"
+        tar -xzf "$TMP_DIR/archive.tar.gz" -C "$TMP_DIR"
+        cp "$TMP_DIR/agy-guard" "$LOCAL_BIN_DIR/agy-guard"
+        chmod +x "$LOCAL_BIN_DIR/agy-guard"
+        rm -rf "$TMP_DIR"
+        BIN_PATH="$LOCAL_BIN_DIR/agy-guard"
+        echo -e "${GREEN}✓ Downloaded and installed to: $BIN_PATH${RESET}"
+    elif command -v go >/dev/null 2>&1; then
+        echo "Release asset not found, compiling via go install..."
+        go install github.com/agy-guard/agy-guard/cmd/agy-guard@latest
+        cp "$(go env GOPATH)/bin/agy-guard" "$LOCAL_BIN_DIR/agy-guard"
+        chmod +x "$LOCAL_BIN_DIR/agy-guard"
+        BIN_PATH="$LOCAL_BIN_DIR/agy-guard"
+        echo -e "${GREEN}✓ Installed to: $BIN_PATH${RESET}"
+    else
+        echo -e "${RED}Error: Could not locate, download, or compile agy-guard.${RESET}"
+        exit 1
+    fi
 fi
 
 # ------------------------------------------------------------------------------
@@ -66,20 +107,19 @@ SELECTED_MODEL="gemini-3.5-flash-lite"
 API_KEY="YOUR_GEMINI_API_KEY_HERE"
 OLLAMA_URL="http://localhost:11434"
 
-read -rp "Enter choice [1/2] (default: 1): " PROVIDER_CHOICE
-PROVIDER_CHOICE="${PROVIDER_CHOICE:-1}"
+PROVIDER_CHOICE=$(prompt_read "Enter choice [1/2] (default: 1): " "1")
 
 if [ "$PROVIDER_CHOICE" = "2" ]; then
     SELECTED_PROVIDER="ollama"
-    read -rp "Enter Ollama URL [http://localhost:11434]: " INPUT_OLLAMA_URL
+    INPUT_OLLAMA_URL=$(prompt_read "Enter Ollama URL [http://localhost:11434]: " "http://localhost:11434")
     OLLAMA_URL="${INPUT_OLLAMA_URL:-http://localhost:11434}"
 
-    read -rp "Enter Ollama Model [llama3.2]: " INPUT_MODEL
+    INPUT_MODEL=$(prompt_read "Enter Ollama Model [llama3.2]: " "llama3.2")
     SELECTED_MODEL="${INPUT_MODEL:-llama3.2}"
     echo -e "${GREEN}✓ Selected Ollama (${SELECTED_MODEL}) at ${OLLAMA_URL}${RESET}"
 else
     SELECTED_PROVIDER="gemini"
-    read -rp "Enter Gemini Model [gemini-3.5-flash-lite]: " INPUT_MODEL
+    INPUT_MODEL=$(prompt_read "Enter Gemini Model [gemini-3.5-flash-lite]: " "gemini-3.5-flash-lite")
     SELECTED_MODEL="${INPUT_MODEL:-gemini-3.5-flash-lite}"
 
     # Check if GEMINI_API_KEY is already set in the current shell
@@ -87,8 +127,7 @@ else
     if [ -n "$DETECTED_KEY" ]; then
         KEY_MASK="${DETECTED_KEY:0:6}...${DETECTED_KEY: -4}"
         echo -e "Found GEMINI_API_KEY in environment (${KEY_MASK})"
-        read -rp "Use this API key? [Y/n]: " USE_ENV_KEY
-        USE_ENV_KEY="${USE_ENV_KEY:-Y}"
+        USE_ENV_KEY=$(prompt_read "Use this API key? [Y/n]: " "Y")
         if [[ "$USE_ENV_KEY" =~ ^[Yy]$ ]]; then
             API_KEY="$DETECTED_KEY"
         fi
@@ -96,7 +135,7 @@ else
 
     if [ "$API_KEY" = "YOUR_GEMINI_API_KEY_HERE" ]; then
         echo -e "Get a free Gemini API key from: ${CYAN}https://aistudio.google.com${RESET}"
-        read -rp "Enter your Gemini API Key: " INPUT_KEY
+        INPUT_KEY=$(prompt_read "Enter your Gemini API Key: " "")
         if [ -n "$INPUT_KEY" ]; then
             API_KEY="$INPUT_KEY"
         else
