@@ -25,10 +25,10 @@ type GeminiClassifier struct {
 
 func NewGeminiClassifier(model, apiKey string, timeoutSec int) *GeminiClassifier {
 	if timeoutSec <= 0 {
-		timeoutSec = 8
+		timeoutSec = 15
 	}
 	if strings.TrimSpace(model) == "" {
-		model = "gemini-3.5-flash-lite"
+		model = "gemini-3.5-flash"
 	}
 	return &GeminiClassifier{
 		BaseURL:    defaultGeminiBaseURL,

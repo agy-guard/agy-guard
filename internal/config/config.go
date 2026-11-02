@@ -31,10 +31,10 @@ type StaticRules struct {
 func DefaultConfig() *Config {
 	return &Config{
 		Provider:                 "gemini",
-		Model:                    "gemini-3.5-flash-lite",
+		Model:                    "gemini-3.5-flash",
 		APIKey:                   "YOUR_GEMINI_API_KEY_HERE",
 		OllamaURL:                "http://localhost:11434",
-		TimeoutSec:               8,
+		TimeoutSec:               15,
 		IncludeTranscriptContext: true,
 		EnableAuditLog:           true,
 		EnableCache:              true,

@@ -12,8 +12,8 @@ func TestDefaultConfig(t *testing.T) {
 	if cfg.Provider != "gemini" {
 		t.Errorf("expected provider gemini, got %q", cfg.Provider)
 	}
-	if cfg.Model != "gemini-3.5-flash-lite" {
-		t.Errorf("expected model gemini-3.5-flash-lite, got %q", cfg.Model)
+	if cfg.Model != "gemini-3.5-flash" {
+		t.Errorf("expected model gemini-3.5-flash, got %q", cfg.Model)
 	}
 	if cfg.TimeoutSec <= 0 {
 		t.Errorf("expected positive timeout, got %d", cfg.TimeoutSec)

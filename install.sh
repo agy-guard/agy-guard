@@ -103,7 +103,7 @@ echo -e "  ${BOLD}1)${RESET} Google Gemini ${GREEN}(Recommended - ultra fast, fr
 echo -e "  ${BOLD}2)${RESET} Local Ollama  ${YELLOW}(100% offline & private, runs locally)${RESET}"
 
 SELECTED_PROVIDER="gemini"
-SELECTED_MODEL="gemini-3.5-flash-lite"
+SELECTED_MODEL="gemini-3.5-flash"
 API_KEY="YOUR_GEMINI_API_KEY_HERE"
 OLLAMA_URL="http://localhost:11434"
 
@@ -119,8 +119,8 @@ if [ "$PROVIDER_CHOICE" = "2" ]; then
     echo -e "${GREEN}✓ Selected Ollama (${SELECTED_MODEL}) at ${OLLAMA_URL}${RESET}"
 else
     SELECTED_PROVIDER="gemini"
-    INPUT_MODEL=$(prompt_read "Enter Gemini Model [gemini-3.5-flash-lite]: " "gemini-3.5-flash-lite")
-    SELECTED_MODEL="${INPUT_MODEL:-gemini-3.5-flash-lite}"
+    INPUT_MODEL=$(prompt_read "Enter Gemini Model [gemini-3.5-flash]: " "gemini-3.5-flash")
+    SELECTED_MODEL="${INPUT_MODEL:-gemini-3.5-flash}"
 
     # Check if GEMINI_API_KEY is already set in the current shell
     DETECTED_KEY="${GEMINI_API_KEY:-}"
@@ -181,7 +181,7 @@ cat <<EOF > "$CONFIG_FILE"
   "model": "$SELECTED_MODEL",
   "api_key": "$API_KEY",
   "ollama_url": "$OLLAMA_URL",
-  "timeout_sec": 8,
+  "timeout_sec": 15,
   "include_transcript_context": true,
   "enable_audit_log": true,
   "enable_cache": true,

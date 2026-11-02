@@ -101,8 +101,8 @@ if ($ProviderChoice -eq "2") {
     Write-Host "✓ Selected Ollama ($SelectedModel) at $OllamaUrl" -ForegroundColor Green
 } else {
     $SelectedProvider = "gemini"
-    $InputModel = Read-Host "Enter Gemini Model [gemini-3.5-flash-lite]"
-    if (-not [string]::IsNullOrWhiteSpace($InputModel)) { $SelectedModel = $InputModel }
+    $InputModel = Read-Host "Enter Gemini Model [gemini-3.5-flash]"
+    if (-not [string]::IsNullOrWhiteSpace($InputModel)) { $SelectedModel = $InputModel } else { $SelectedModel = "gemini-3.5-flash" }
 
     # Check env
     $EnvKey = $env:GEMINI_API_KEY
@@ -159,7 +159,7 @@ $ConfigObj = [ordered]@{
     "model"                      = $SelectedModel
     "api_key"                    = $ApiKey
     "ollama_url"                 = $OllamaUrl
-    "timeout_sec"                = 8
+    "timeout_sec"                = 15
     "include_transcript_context" = $true
     "enable_audit_log"           = $true
     "enable_cache"               = $true
