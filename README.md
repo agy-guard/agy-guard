@@ -55,34 +55,25 @@ agy-guard init --plugin
 
 ## 🏛️ How It Works: The 3-Tier Pipeline
 
+`agy-guard` evaluates every tool call through a progressive 3-tier pipeline designed for near-zero latency:
+
 ```mermaid
-flowchart TD
-    ToolCall["Tool Execution Request (PreToolUse)"] --> NonCmd{"Terminal Command or File Tool?"}
-    
-    NonCmd -- "File Tool (read/write/edit)" --> FileCheck{"Sensitive File or Outside Workspace?"}
-    FileCheck -- "Safe" --> Allow0["Decision: ALLOW (0 ms)"]
-    FileCheck -- "Dangerous / External" --> AskFile["Decision: ASK / DENY"]
-    
-    NonCmd -- "Terminal Command" --> Tier1{"Tier 1: Static Rules"}
-    Tier1 -- "Deny Substring Matched" --> Deny1["Decision: DENY (0 ms)"]
-    Tier1 -- "Allow Prefix / Safe Chain" --> Allow1["Decision: ALLOW (0 ms)"]
-    Tier1 -- "Ambiguous / Not Whitelisted" --> Cache{"Tier 2: Cache Check"}
-    
-    Cache -- "Cache Hit (Allow)" --> AllowCache["Decision: ALLOW (<1 ms)"]
-    Cache -- "Cache Miss" --> Tier3["Tier 3: LLM Classifier (Gemini / Ollama)"]
-    
-    Tier3 --> Intent{"User Intent Override in Chat?"}
-    Intent -- "Explicitly Requested" --> AllowIntent["Decision: ALLOW (~1-2s)"]
-    Intent -- "Unconfirmed Mutation" --> Policy{"Apply Mode Policy"}
-    
-    Policy -- "Interactive Mode" --> Ask["Decision: ASK (User Prompt)"]
-    Policy -- "AFK / Unattended Mode" --> DenyAFK["Decision: DENY (Agent Adapts)"]
+flowchart LR
+    In["PreToolUse Event"] --> T1{"Tier 1: Static Rules<br/>(0 ms)"}
+    T1 -- "Safe dev tool / Workspace file" --> OK["✅ ALLOW"]
+    T1 -- "Dangerous pattern / Secret file" --> BLOCK["🚫 DENY"]
+    T1 -- "Ambiguous" --> T2{"Tier 2: Smart Cache<br/>(&lt;1 ms)"}
+    T2 -- "Cached Allow" --> OK
+    T2 -- "Cache Miss" --> T3{"Tier 3: LLM Classifier<br/>(~1.5s)"}
+    T3 -- "Explicitly asked in chat" --> OK
+    T3 -- "Unconfirmed mutation" --> Policy["⏸️ ASK / AFK Deny"]
 ```
 
-1. **Fast File Filter (0 ms):** Verifies file paths against workspace roots (`workspacePaths`, `cwd`) and protects credentials (`.env`, `hooks.json`, `~/.ssh/id_rsa`).
-2. **Tier 1 Static Rules (0 ms):** Analyzes commands and compound chains (`&&`, `||`, `;`, `|`). If all parts match `allow_prefixes`, execution proceeds instantly with **zero API quota consumed**.
-3. **Smart Cache (<1 ms):** Hashes command + dialogue context (10-minute TTL) so repeated commands in loops don't incur latency.
-4. **Tier 3 LLM Evaluation (~1-2s):** Evaluates ambiguous commands with OS awareness (`runtime.GOOS`), extracting the user's latest request from `transcriptPath` to safely grant Intent Overrides.
+| Tier | Latency | Scope & Behavior |
+| :--- | :--- | :--- |
+| **Tier 1: Static Engine & Files** | **0 ms** | Pre-approves 99.9% of standard dev tools (`go`, `git`, `python3`, `npm`, `cargo`, `ls`, etc.) and safe workspace file edits. Hard-blocks destructive patterns and secrets (`.env`, `id_rsa`). Zero API calls. |
+| **Tier 2: Smart Context Cache** | **&lt;1 ms** | SHA-256 cache combining command + dialogue transcript. Eliminates redundant LLM calls during test/build loops while auto-invalidating as soon as conversation moves forward. |
+| **Tier 3: LLM Classifier** | **~1–2s** | Evaluates unfamiliar or state-changing actions. Extracts the user's latest chat message for **Intent Override** (e.g., auto-approves `git push` if you asked for it). |
 
 ---
 
