@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -65,6 +66,123 @@ func (p *InputPayload) ExtractCommand() string {
 		}
 	}
 	return ""
+}
+
+// ExtractTargetFile достает целевой путь к файлу из аргументов тулов редактирования/чтения/поиска.
+func (p *InputPayload) ExtractTargetFile() string {
+	if p == nil || p.ToolCall.Args == nil {
+		return ""
+	}
+	keys := []string{
+		"TargetFile", "target_file", "targetFile",
+		"file_path", "filePath", "FilePath",
+		"Path", "path",
+		"file", "File",
+		"AbsolutePath", "absolute_path",
+		"DirectoryPath", "directory_path", "directoryPath",
+	}
+	for _, k := range keys {
+		if val, ok := p.ToolCall.Args[k]; ok {
+			if str, ok := val.(string); ok && strings.TrimSpace(str) != "" {
+				return strings.TrimSpace(str)
+			}
+		}
+	}
+	return ""
+}
+
+// IsSensitiveFile проверяет, относится ли файл к критическим секретам или конфигам хука.
+func IsSensitiveFile(targetFile string) bool {
+	clean := strings.TrimSpace(targetFile)
+	if clean == "" {
+		return false
+	}
+	lower := strings.ToLower(filepath.ToSlash(clean))
+	base := strings.ToLower(filepath.Base(clean))
+
+	// Проверяем файлы .env
+	if base == ".env" || strings.HasPrefix(base, ".env.") || strings.HasSuffix(base, ".env") {
+		return true
+	}
+
+	sensitivePatterns := []string{
+		"hooks.json",
+		"id_rsa",
+		"id_ed25519",
+		"id_ecdsa",
+		"id_dsa",
+		".ssh/",
+		"/.ssh",
+		".git/config",
+		".bashrc",
+		".zshrc",
+		".profile",
+	}
+
+	for _, p := range sensitivePatterns {
+		if strings.Contains(lower, p) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// IsWithinWorkspace проверяет, находится ли targetFile внутри рабочей директории cwd.
+func IsWithinWorkspace(cwd, targetFile string) bool {
+	cleanTarget := strings.TrimSpace(targetFile)
+	cleanCwd := strings.TrimSpace(cwd)
+	if cleanTarget == "" {
+		return true
+	}
+	if cleanCwd == "" {
+		var err error
+		cleanCwd, err = os.Getwd()
+		if err != nil || cleanCwd == "" {
+			return true
+		}
+	}
+
+	absCwd, err := filepath.Abs(cleanCwd)
+	if err != nil {
+		return true
+	}
+
+	var absTarget string
+	if filepath.IsAbs(cleanTarget) {
+		absTarget = filepath.Clean(cleanTarget)
+	} else {
+		absTarget = filepath.Clean(filepath.Join(absCwd, cleanTarget))
+	}
+
+	rel, err := filepath.Rel(absCwd, absTarget)
+	if err != nil {
+		return false
+	}
+
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return false
+	}
+
+	return true
+}
+
+// FormatDenyReason оборачивает причину отказа в строгую стоп-инструкцию для AI-агента,
+// предотвращающую бесконечные повторные попытки выполнения заблокированной команды.
+func FormatDenyReason(baseReason string) string {
+	baseReason = strings.TrimSpace(baseReason)
+	if baseReason == "" {
+		baseReason = "Execution of this command was rejected by security policy"
+	}
+	if strings.Contains(baseReason, "[AGY-GUARD SECURITY BLOCK]") {
+		return baseReason
+	}
+	return fmt.Sprintf(
+		"[AGY-GUARD SECURITY BLOCK] %s. "+
+			"CRITICAL INSTRUCTION FOR AGENT: Do NOT retry this command or variations of it. "+
+			"Skip this operation immediately and inform the user in chat that manual execution is required.",
+		baseReason,
+	)
 }
 
 // FormatVerdict сериализует вердикт в валидный JSON-байтсрез с гарантией допустимого Decision.

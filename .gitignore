@@ -19,6 +19,7 @@ AGENTS.md
 .DS_Store
 .DS_Store?
 ._*
+__MACOSX/
 .Spotlight-V100
 .Trashes
 ehthumbs.db

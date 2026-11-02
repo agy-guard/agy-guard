@@ -18,6 +18,12 @@ func TestDefaultConfig(t *testing.T) {
 	if cfg.TimeoutSec <= 0 {
 		t.Errorf("expected positive timeout, got %d", cfg.TimeoutSec)
 	}
+	if cfg.UnattendedMode {
+		t.Errorf("expected UnattendedMode false by default")
+	}
+	if cfg.MaxRetriesBeforeAsk != 2 {
+		t.Errorf("expected MaxRetriesBeforeAsk 2 by default, got %d", cfg.MaxRetriesBeforeAsk)
+	}
 	if len(cfg.StaticRules.AllowPrefixes) == 0 {
 		t.Errorf("expected non-empty AllowPrefixes")
 	}

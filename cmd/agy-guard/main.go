@@ -36,6 +36,15 @@ func main() {
 		runInit(installAsPlugin)
 	case "install-plugin":
 		runInit(true)
+	case "uninstall":
+		purge := false
+		for _, a := range args[1:] {
+			if a == "--purge" || a == "-p" {
+				purge = true
+				break
+			}
+		}
+		runUninstall(purge)
 	case "dry-run":
 		if len(args) < 2 {
 			fmt.Fprintln(os.Stderr, "Usage: agy-guard dry-run \"<command>\"")
@@ -60,6 +69,8 @@ Usage:
   agy-guard init             Initialize ~/.agy-guard/config.json and register hook in ~/.gemini/config/hooks.json
   agy-guard init --plugin    Install as a native Antigravity plugin in ~/.gemini/config/plugins/agy-guard/
   agy-guard install-plugin   Alias for 'agy-guard init --plugin'
+  agy-guard uninstall        Unregister hook and remove native Antigravity plugin
+  agy-guard uninstall --purge Also delete ~/.agy-guard (config, cache, audit logs)
   agy-guard dry-run "<cmd>"  Evaluate command without running agy and measure evaluation latency
   agy-guard help             Show this help message`)
 }
@@ -83,27 +94,28 @@ func runHookMode() {
 		})
 	}
 
-	cmd := payload.ExtractCommand()
-	if strings.TrimSpace(cmd) == "" {
-		hook.EmitAndExit(hook.OutputVerdict{
-			Decision: hook.DecisionAllow,
-			Reason:   "No shell command present in tool arguments",
-		})
-	}
-
 	cfg, err := config.Load()
 	if err != nil {
 		cfg = config.DefaultConfig()
 	}
 
+	sessionID := payload.SessionID
+	if sessionID == "" {
+		sessionID = payload.ConversationID
+	}
+	if sessionID == "" {
+		sessionID = "default"
+	}
+
+	var breaker *classifier.LoopBreaker
+	if statePath, err := classifier.DefaultSessionStatePath(); err == nil {
+		breaker = classifier.NewLoopBreaker(statePath)
+	}
+
 	// Функция безопасного логирования аудита
-	logAudit := func(tier string, verdict hook.OutputVerdict) {
+	logAudit := func(tier, action string, verdict hook.OutputVerdict) {
 		if !cfg.EnableAuditLog {
 			return
-		}
-		sessionID := payload.SessionID
-		if sessionID == "" {
-			sessionID = payload.ConversationID
 		}
 		cwd := payload.Cwd
 		if cwd == "" {
@@ -112,7 +124,7 @@ func runHookMode() {
 		_ = audit.Log(audit.Record{
 			Timestamp: time.Now().UTC().Format(time.RFC3339),
 			SessionID: sessionID,
-			Command:   cmd,
+			Command:   action,
 			Cwd:       cwd,
 			Tier:      tier,
 			Decision:  string(verdict.Decision),
@@ -121,23 +133,35 @@ func runHookMode() {
 		})
 	}
 
-	// Tier 1: Zero-latency static matcher
-	verdict, matched := rules.EvaluateStatic(cmd, cfg.StaticRules)
-	if matched {
-		logAudit("tier1_static", verdict)
+	// Быстрый фильтр (0 мс, без LLM) для не-терминальных инструментов (edit_file, write_file, read_file, etc.)
+	if verdict, tier, handled := evaluateNonCommandTool(payload, cfg, breaker); handled {
+		action := payload.ExtractTargetFile()
+		if action == "" {
+			action = payload.ToolCall.Name
+		}
+		logAudit(tier, action, verdict)
 		hook.EmitAndExit(verdict)
 	}
 
-	// Кеш решений классификатора (для ускорения повторных запусков в циклах сборки/тестирования)
-	var cacheInstance *classifier.Cache
-	if cfg.EnableCache {
-		if cachePath, err := classifier.DefaultCachePath(); err == nil {
-			cacheInstance = classifier.NewCache(cachePath, time.Duration(cfg.CacheTTLMinutes)*time.Minute)
-			if cachedVerdict, hit := cacheInstance.Get(cfg.Provider, cfg.Model, cmd); hit {
-				logAudit("cache", cachedVerdict)
-				hook.EmitAndExit(cachedVerdict)
-			}
-		}
+	cmd := payload.ExtractCommand()
+	if strings.TrimSpace(cmd) == "" {
+		hook.EmitAndExit(hook.OutputVerdict{
+			Decision: hook.DecisionAllow,
+			Reason:   "No shell command present in tool arguments",
+		})
+	}
+
+	// applyPolicy применяет стоп-директивы для агента, AFK-режим и защиту от бесконечных циклов
+	evalPolicy := func(v hook.OutputVerdict) hook.OutputVerdict {
+		return applyPolicy(v, cmd, sessionID, cfg, breaker)
+	}
+
+	// Tier 1: Zero-latency static matcher
+	verdict, matched := rules.EvaluateStatic(cmd, cfg.StaticRules)
+	if matched {
+		finalVerdict := evalPolicy(verdict)
+		logAudit("tier1_static", cmd, finalVerdict)
+		hook.EmitAndExit(finalVerdict)
 	}
 
 	// Tier 2: Transcript Context Reader
@@ -146,35 +170,50 @@ func runHookMode() {
 		transcript = hook.ReadTranscriptTail(payload.TranscriptPath, hook.DefaultMaxTranscriptBytes)
 	}
 
+	// Кеш решений классификатора (учитывает и команду, и контекст диалога)
+	var cacheInstance *classifier.Cache
+	if cfg.EnableCache {
+		if cachePath, err := classifier.DefaultCachePath(); err == nil {
+			cacheInstance = classifier.NewCache(cachePath, time.Duration(cfg.CacheTTLMinutes)*time.Minute)
+			if cachedVerdict, hit := cacheInstance.Get(cfg.Provider, cfg.Model, cmd, transcript); hit {
+				if cachedVerdict.Decision == hook.DecisionAllow {
+					logAudit("cache", cmd, cachedVerdict)
+					hook.EmitAndExit(cachedVerdict)
+				}
+			}
+		}
+	}
+
 	// Tier 3: LLM Classifier
 	c, err := classifier.NewClassifier(cfg)
 	if err != nil {
-		fallbackVerdict := hook.OutputVerdict{
+		fallbackVerdict := evalPolicy(hook.OutputVerdict{
 			Decision: hook.DecisionAsk,
 			Reason:   fmt.Sprintf("agy-guard: classifier configuration error: %v", err),
-		}
-		logAudit("fallback", fallbackVerdict)
+		})
+		logAudit("fallback", cmd, fallbackVerdict)
 		hook.EmitAndExit(fallbackVerdict)
 	}
 
 	verdict, err = c.Evaluate(context.Background(), cmd, transcript)
 	if err != nil {
-		fallbackVerdict := hook.OutputVerdict{
+		fallbackVerdict := evalPolicy(hook.OutputVerdict{
 			Decision: hook.DecisionAsk,
 			Reason:   fmt.Sprintf("agy-guard: classifier evaluation failed: %v", err),
-		}
-		logAudit("fallback", fallbackVerdict)
+		})
+		logAudit("fallback", cmd, fallbackVerdict)
 		hook.EmitAndExit(fallbackVerdict)
 	}
 
-	// Сохраняем в кеш при успешной оценке
-	if cacheInstance != nil {
-		_ = cacheInstance.Put(cfg.Provider, cfg.Model, cmd, verdict)
+	// Сохраняем в кеш только allow-вердикты с контекстом диалога
+	if cacheInstance != nil && verdict.Decision == hook.DecisionAllow {
+		_ = cacheInstance.Put(cfg.Provider, cfg.Model, cmd, verdict, transcript)
 	}
 
+	finalVerdict := evalPolicy(verdict)
 	tierName := fmt.Sprintf("tier3_%s", cfg.Provider)
-	logAudit(tierName, verdict)
-	hook.EmitAndExit(verdict)
+	logAudit(tierName, cmd, finalVerdict)
+	hook.EmitAndExit(finalVerdict)
 }
 
 func runInit(asPlugin bool) {
@@ -220,8 +259,48 @@ func runInit(asPlugin bool) {
 	fmt.Println("- To use local Ollama, set \"provider\": \"ollama\" in ~/.agy-guard/config.json")
 }
 
+func runUninstall(purge bool) {
+	fmt.Println("Uninstalling agy-guard...")
+
+	// 1. Remove from ~/.gemini/config/hooks.json
+	hooksPath, err := config.UnpatchHooksJSON()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to unpatch hooks.json: %v\n", err)
+	} else if hooksPath != "" {
+		fmt.Printf("[OK] Removed hook from: %s\n", hooksPath)
+	}
+
+	// 2. Remove native plugin directory ~/.gemini/config/plugins/agy-guard
+	pluginDir, err := config.RemovePlugin()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to remove plugin directory: %v\n", err)
+	} else if pluginDir != "" {
+		fmt.Printf("[OK] Removed plugin from: %s\n", pluginDir)
+	}
+
+	// 3. Purge config & audit logs if requested
+	if purge {
+		if home, err := os.UserHomeDir(); err == nil {
+			configDir := filepath.Join(home, ".agy-guard")
+			if err := os.RemoveAll(configDir); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: failed to remove config dir %s: %v\n", configDir, err)
+			} else {
+				fmt.Printf("[OK] Purged configuration and logs: %s\n", configDir)
+			}
+		}
+	} else {
+		fmt.Println("[INFO] Configuration and audit logs kept in ~/.agy-guard (use 'agy-guard uninstall --purge' to delete)")
+	}
+
+	fmt.Println("\nUninstallation complete! Antigravity CLI will no longer route tool events through agy-guard.")
+}
+
 func runDryRun(cmd string) {
 	fmt.Printf("[dry-run] Command: %s\n", cmd)
+	cmdClass := classifier.NormalizeCommandClass(cmd)
+	if cmdClass != "" {
+		fmt.Printf("[dry-run] Action Class: %s\n", cmdClass)
+	}
 	start := time.Now()
 
 	cfg, err := config.Load()
@@ -229,15 +308,20 @@ func runDryRun(cmd string) {
 		cfg = config.DefaultConfig()
 	}
 
+	applyDryRunPolicy := func(v hook.OutputVerdict) hook.OutputVerdict {
+		return applyPolicy(v, cmd, "dry-run", cfg, nil)
+	}
+
 	// Tier 1 Check
 	verdict, matched := rules.EvaluateStatic(cmd, cfg.StaticRules)
 	if matched {
 		elapsed := time.Since(start)
+		finalVerdict := applyDryRunPolicy(verdict)
 		fmt.Println("[dry-run] Matched Tier: Tier 1 (Static Rules)")
 		fmt.Printf("[dry-run] Latency: %v\n", elapsed)
-		fmt.Printf("[dry-run] Decision: %s\n", verdict.Decision)
-		if verdict.Reason != "" {
-			fmt.Printf("[dry-run] Reason: %s\n", verdict.Reason)
+		fmt.Printf("[dry-run] Decision: %s\n", finalVerdict.Decision)
+		if finalVerdict.Reason != "" {
+			fmt.Printf("[dry-run] Reason: %s\n", finalVerdict.Reason)
 		}
 		return
 	}
@@ -248,14 +332,16 @@ func runDryRun(cmd string) {
 		if cachePath, err := classifier.DefaultCachePath(); err == nil {
 			cacheInstance = classifier.NewCache(cachePath, time.Duration(cfg.CacheTTLMinutes)*time.Minute)
 			if cachedVerdict, hit := cacheInstance.Get(cfg.Provider, cfg.Model, cmd); hit {
-				elapsed := time.Since(start)
-				fmt.Println("[dry-run] Matched Tier: Cache (hit)")
-				fmt.Printf("[dry-run] Latency: %v\n", elapsed)
-				fmt.Printf("[dry-run] Decision: %s\n", cachedVerdict.Decision)
-				if cachedVerdict.Reason != "" {
-					fmt.Printf("[dry-run] Reason: %s\n", cachedVerdict.Reason)
+				if cachedVerdict.Decision == hook.DecisionAllow {
+					elapsed := time.Since(start)
+					fmt.Println("[dry-run] Matched Tier: Cache (hit)")
+					fmt.Printf("[dry-run] Latency: %v\n", elapsed)
+					fmt.Printf("[dry-run] Decision: %s\n", cachedVerdict.Decision)
+					if cachedVerdict.Reason != "" {
+						fmt.Printf("[dry-run] Reason: %s\n", cachedVerdict.Reason)
+					}
+					return
 				}
-				return
 			}
 		}
 	}
@@ -282,14 +368,106 @@ func runDryRun(cmd string) {
 		return
 	}
 
-	if cacheInstance != nil {
+	if cacheInstance != nil && verdict.Decision == hook.DecisionAllow {
 		_ = cacheInstance.Put(cfg.Provider, cfg.Model, cmd, verdict)
 	}
 
+	finalVerdict := applyDryRunPolicy(verdict)
 	fmt.Printf("[dry-run] Matched Tier: %s\n", tierName)
 	fmt.Printf("[dry-run] Latency: %v\n", elapsed)
-	fmt.Printf("[dry-run] Decision: %s\n", verdict.Decision)
-	if verdict.Reason != "" {
-		fmt.Printf("[dry-run] Reason: %s\n", verdict.Reason)
+	fmt.Printf("[dry-run] Decision: %s\n", finalVerdict.Decision)
+	if finalVerdict.Reason != "" {
+		fmt.Printf("[dry-run] Reason: %s\n", finalVerdict.Reason)
 	}
+}
+
+// applyPolicy применяет стоп-директивы для агента, AFK-режим и защиту от бесконечных циклов
+func applyPolicy(v hook.OutputVerdict, cmd, sessionID string, cfg *config.Config, breaker *classifier.LoopBreaker) hook.OutputVerdict {
+	if v.Decision == hook.DecisionAllow {
+		return v
+	}
+
+	maxRetries := cfg.MaxRetriesBeforeAsk
+	if maxRetries <= 0 {
+		maxRetries = 2
+	}
+
+	// 1. Unattended mode: конвертируем ask в deny со стоп-инструкцией AFK
+	if cfg.UnattendedMode && v.Decision == hook.DecisionAsk {
+		baseReason := v.Reason
+		if baseReason == "" {
+			baseReason = "Action requires confirmation"
+		}
+		v.Decision = hook.DecisionDeny
+		v.Reason = hook.FormatDenyReason(baseReason + ". User is AFK. Do not block on confirmation; find a safe alternative or skip this step.")
+	}
+
+	// 2. Loop breaker при повторных отказах (Strike 2+ -> авто-эскалация в ask)
+	if v.Decision == hook.DecisionDeny && breaker != nil {
+		escalated, _, cmdClass := breaker.RecordDenyAndCheck(sessionID, cmd, maxRetries)
+		if escalated {
+			return hook.OutputVerdict{
+				Decision: hook.DecisionAsk,
+				Reason:   fmt.Sprintf("Loop Breaker: Agent repeated a blocked command (%s). Escalating to manual confirmation to prevent an infinite loop.", cmdClass),
+			}
+		}
+		v.Reason = hook.FormatDenyReason(v.Reason)
+	}
+
+	return v
+}
+
+// isCommandTool возвращает true, если переданное имя инструмента является запуском терминальной команды
+func isCommandTool(toolName string) bool {
+	lower := strings.ToLower(strings.TrimSpace(toolName))
+	return lower == "run_command" || lower == "bash" || lower == "shell" || lower == "terminal" || lower == "exec_command" || lower == "execute_command"
+}
+
+// evaluateNonCommandTool выполняет быстрый фильтр (0 мс, без LLM) для файлов и других не-терминальных инструментов.
+// Возвращает (verdict, auditTier, handled).
+func evaluateNonCommandTool(payload *hook.InputPayload, cfg *config.Config, breaker *classifier.LoopBreaker) (hook.OutputVerdict, string, bool) {
+	if payload == nil || isCommandTool(payload.ToolCall.Name) {
+		return hook.OutputVerdict{}, "", false
+	}
+
+	sessionID := payload.SessionID
+	if sessionID == "" {
+		sessionID = payload.ConversationID
+	}
+	if sessionID == "" {
+		sessionID = "default"
+	}
+
+	targetFile := payload.ExtractTargetFile()
+	if targetFile == "" {
+		// Read-only тулы типа grep/search без указания пути к файлу разрешаем сразу
+		return hook.OutputVerdict{
+			Decision: hook.DecisionAllow,
+			Reason:   "Non-file tool call allowed",
+		}, "tool_fast_path", true
+	}
+
+	// Проверка 1 (Sensitive Files): защита секретов и конфигурационных файлов
+	if hook.IsSensitiveFile(targetFile) {
+		v := applyPolicy(hook.OutputVerdict{
+			Decision: hook.DecisionAsk,
+			Reason:   "Agent is attempting to modify/access sensitive config or secret file: " + targetFile,
+		}, targetFile, sessionID, cfg, breaker)
+		return v, "file_sensitive", true
+	}
+
+	// Проверка 2 (Границы воркспейса): защита от записи за пределы рабочей директории (cwd)
+	if !hook.IsWithinWorkspace(payload.Cwd, targetFile) {
+		v := applyPolicy(hook.OutputVerdict{
+			Decision: hook.DecisionAsk,
+			Reason:   "Agent is attempting to modify/access file outside current workspace: " + targetFile,
+		}, targetFile, sessionID, cfg, breaker)
+		return v, "file_outside_workspace", true
+	}
+
+	// Все обычные файлы внутри проекта разрешаем мгновенно за 0 мс без LLM
+	return hook.OutputVerdict{
+		Decision: hook.DecisionAllow,
+		Reason:   "File access within workspace allowed",
+	}, "file_fast_path", true
 }

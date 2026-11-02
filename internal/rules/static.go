@@ -28,7 +28,7 @@ func EvaluateStatic(cmd string, rules config.StaticRules) (hook.OutputVerdict, b
 		if denyTrimmed == "" {
 			continue
 		}
-		if strings.Contains(lowerCmd, strings.ToLower(denyTrimmed)) {
+		if matchesRestrictedPattern(lowerCmd, denyTrimmed) {
 			return hook.OutputVerdict{
 				Decision: hook.DecisionDeny,
 				Reason:   fmt.Sprintf("Blocked by Tier-1 static rule: command contains restricted pattern %q", denyTrimmed),
@@ -216,4 +216,56 @@ func splitCompoundCommand(cmd string) ([]string, bool) {
 	}
 
 	return parts, true
+}
+
+// matchesRestrictedPattern проверяет, содержится ли паттерн в команде с учетом границ слов
+// для коротких буквенно-цифровых командных токенов (например, "su", "sudo", "doas").
+func matchesRestrictedPattern(cmd, pattern string) bool {
+	p := strings.ToLower(pattern)
+	if p == "" {
+		return false
+	}
+
+	idx := strings.Index(cmd, p)
+	if idx == -1 {
+		return false
+	}
+
+	firstChar := p[0]
+	lastChar := p[len(p)-1]
+	isAlphaFirst := (firstChar >= 'a' && firstChar <= 'z') || (firstChar >= '0' && firstChar <= '9')
+	isAlphaLast := (lastChar >= 'a' && lastChar <= 'z') || (lastChar >= '0' && lastChar <= '9')
+
+	for idx != -1 {
+		matchStart := idx
+		matchEnd := idx + len(p)
+
+		leftOK := true
+		if isAlphaFirst && matchStart > 0 {
+			prev := cmd[matchStart-1]
+			if (prev >= 'a' && prev <= 'z') || (prev >= '0' && prev <= '9') || prev == '_' {
+				leftOK = false
+			}
+		}
+
+		rightOK := true
+		if isAlphaLast && matchEnd < len(cmd) {
+			next := cmd[matchEnd]
+			if (next >= 'a' && next <= 'z') || (next >= '0' && next <= '9') || next == '_' {
+				rightOK = false
+			}
+		}
+
+		if leftOK && rightOK {
+			return true
+		}
+
+		nextIdx := strings.Index(cmd[matchStart+1:], p)
+		if nextIdx == -1 {
+			break
+		}
+		idx = matchStart + 1 + nextIdx
+	}
+
+	return false
 }

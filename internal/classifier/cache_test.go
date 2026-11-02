@@ -114,3 +114,41 @@ func TestCache_CorruptedFile(t *testing.T) {
 		t.Errorf("Expected cache hit after recovery, got miss")
 	}
 }
+
+func TestCache_TranscriptContextInvalidation(t *testing.T) {
+	tmpDir := t.TempDir()
+	cachePath := filepath.Join(tmpDir, "cache.json")
+	c := NewCache(cachePath, 5*time.Minute)
+
+	cmd := "git push"
+	context1 := "[USER]: run build"
+	context2 := "[USER]: now please push to main"
+
+	verdictAllow := hook.OutputVerdict{
+		Decision: hook.DecisionAllow,
+		Reason:   "Explicit user request",
+	}
+
+	// Cache with context1
+	if err := c.Put("gemini", "gemini-3.8-flash", cmd, verdictAllow, context1); err != nil {
+		t.Fatalf("Put failed: %v", err)
+	}
+
+	// Context1 must hit
+	v, hit := c.Get("gemini", "gemini-3.8-flash", cmd, context1)
+	if !hit || v.Decision != hook.DecisionAllow {
+		t.Errorf("expected hit for context1, got %v, hit=%v", v, hit)
+	}
+
+	// Context2 must miss (smart cache invalidation)
+	_, hit = c.Get("gemini", "gemini-3.8-flash", cmd, context2)
+	if hit {
+		t.Errorf("expected cache miss when transcript context changes, got hit")
+	}
+
+	// Empty context must also miss
+	_, hit = c.Get("gemini", "gemini-3.8-flash", cmd)
+	if hit {
+		t.Errorf("expected cache miss without context, got hit")
+	}
+}

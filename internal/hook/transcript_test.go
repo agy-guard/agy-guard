@@ -105,3 +105,38 @@ func TestReadRawTail(t *testing.T) {
 		t.Errorf("ReadRawTail got %q, want 'tail test'", got)
 	}
 }
+
+func TestExtractLatestUserRequest(t *testing.T) {
+	raw := []byte(`{"step_index":0,"source":"USER_EXPLICIT","type":"USER_INPUT","content":"<USER_REQUEST>First prompt</USER_REQUEST>"}
+{"step_index":1,"source":"MODEL","type":"PLANNER_RESPONSE","content":"First response"}
+{"step_index":2,"source":"USER_EXPLICIT","type":"USER_INPUT","content":"<USER_REQUEST>закоммить и запушь изменения</USER_REQUEST>"}
+{"step_index":3,"source":"MODEL","type":"PLANNER_RESPONSE","content":"Running git push..."}`)
+
+	req := ExtractLatestUserRequest(raw)
+	if req != "закоммить и запушь изменения" {
+		t.Errorf("ExtractLatestUserRequest got %q, want %q", req, "закоммить и запушь изменения")
+	}
+}
+
+func TestReadTranscriptTail_LatestUserBlock(t *testing.T) {
+	tmpDir := t.TempDir()
+	filePath := filepath.Join(tmpDir, "transcript.jsonl")
+
+	lines := []string{
+		`{"step_index":0,"source":"USER_EXPLICIT","type":"USER_INPUT","content":"удали папку dist и собери заново"}`,
+		`{"step_index":1,"source":"MODEL","type":"PLANNER_RESPONSE","content":"Step 1"}`,
+		`{"step_index":2,"source":"MODEL","type":"PLANNER_RESPONSE","content":"Step 2"}`,
+		`{"step_index":3,"source":"MODEL","type":"PLANNER_RESPONSE","content":"Step 3"}`,
+	}
+	if err := os.WriteFile(filePath, []byte(strings.Join(lines, "\n")+"\n"), 0600); err != nil {
+		t.Fatalf("failed to write transcript: %v", err)
+	}
+
+	result := ReadTranscriptTail(filePath, 4096)
+	if !strings.Contains(result, "Latest User Request:\nудали папку dist и собери заново") {
+		t.Errorf("expected Latest User Request block, got %q", result)
+	}
+	if !strings.Contains(result, "Recent Turns:") {
+		t.Errorf("expected Recent Turns block, got %q", result)
+	}
+}

@@ -143,6 +143,8 @@ $ConfigObj = [ordered]@{
     "enable_audit_log"           = $true
     "enable_cache"               = $true
     "cache_ttl_minutes"          = 10
+    "unattended_mode"            = $false
+    "max_retries_before_ask"     = 2
     "static_rules"               = [ordered]@{
         "allow_prefixes"  = @(
             "go test", "go build", "go vet", "go list", "go mod tidy", "go fmt", "go env", "go version", "go doc",
@@ -193,4 +195,7 @@ Write-Host ""
 Write-Host "Antigravity CLI ('agy') will now automatically route PreToolUse events through agy-guard."
 Write-Host "You can test any command directly at any time:"
 Write-Host "  agy-guard dry-run `"<command>`"" -ForegroundColor White
+Write-Host ""
+Write-Host "To uninstall at any time:"
+Write-Host "  .\uninstall.ps1  (or: agy-guard uninstall)" -ForegroundColor Cyan
 Write-Host ""

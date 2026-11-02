@@ -261,6 +261,18 @@ func TestEvaluateStatic(t *testing.T) {
 			wantMatched:  true,
 			wantDecision: hook.DecisionDeny,
 		},
+		{
+			name:         "deny su root privilege escalation",
+			cmd:          "su - root",
+			wantMatched:  true,
+			wantDecision: hook.DecisionDeny,
+		},
+		{
+			name:         "word containing 'su' like ensure must NOT trigger deny",
+			cmd:          "echo ensure tests pass",
+			wantMatched:  true,
+			wantDecision: hook.DecisionAllow,
+		},
 		// Unknown commands -> defer to Tier 2/3
 		{
 			name:         "unknown command docker run",

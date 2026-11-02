@@ -122,6 +122,32 @@ tail -f ~/.agy-guard/audit/*.jsonl | jq .
 
 ---
 
+## 🗑️ Uninstallation
+
+If you ever need to uninstall `agy-guard` and restore standard Antigravity CLI behavior:
+
+### Option A: Using the uninstall script
+**macOS & Linux:**
+```bash
+./uninstall.sh          # Keeps ~/.agy-guard config & logs
+./uninstall.sh --purge  # Completely removes everything
+```
+
+**Windows (PowerShell):**
+```powershell
+.\uninstall.ps1         # Keeps ~/.agy-guard config & logs
+.\uninstall.ps1 -Purge  # Completely removes everything
+```
+
+### Option B: Using the CLI directly
+```bash
+agy-guard uninstall
+# or to purge configuration and audit logs:
+agy-guard uninstall --purge
+```
+
+---
+
 ## 🧪 Development & Tests
 
 ```bash

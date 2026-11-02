@@ -55,10 +55,14 @@ func NewCache(filePath string, ttl time.Duration) *Cache {
 	}
 }
 
-// ComputeKey вычисляет SHA256-хеш от провайдера, модели и команды.
-func ComputeKey(provider, model, cmd string) string {
+// ComputeKey вычисляет SHA256-хеш от провайдера, модели, команды и опционального контекста транскрипта.
+func ComputeKey(provider, model, cmd string, contextStr ...string) string {
 	h := sha256.New()
-	keySource := fmt.Sprintf("%s:%s:%s", strings.TrimSpace(provider), strings.TrimSpace(model), strings.TrimSpace(cmd))
+	ctx := ""
+	if len(contextStr) > 0 {
+		ctx = strings.TrimSpace(contextStr[0])
+	}
+	keySource := fmt.Sprintf("%s:%s:%s\x00%s", strings.TrimSpace(provider), strings.TrimSpace(model), strings.TrimSpace(cmd), ctx)
 	h.Write([]byte(keySource))
 	return hex.EncodeToString(h.Sum(nil))
 }
@@ -103,13 +107,13 @@ func (c *Cache) saveStore(store CacheStore) error {
 	return nil
 }
 
-// Get проверяет наличие неистекшего вердикта в кеше.
-func (c *Cache) Get(provider, model, cmd string) (hook.OutputVerdict, bool) {
+// Get проверяет наличие неистекшего вердикта в кеше с учетом опционального контекста диалога.
+func (c *Cache) Get(provider, model, cmd string, contextStr ...string) (hook.OutputVerdict, bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
 	store := c.loadStore()
-	key := ComputeKey(provider, model, cmd)
+	key := ComputeKey(provider, model, cmd, contextStr...)
 
 	entry, exists := store.Entries[key]
 	if !exists {
@@ -132,13 +136,13 @@ func (c *Cache) Get(provider, model, cmd string) (hook.OutputVerdict, bool) {
 	}, true
 }
 
-// Put сохраняет решение классификатора в кеш.
-func (c *Cache) Put(provider, model, cmd string, verdict hook.OutputVerdict) error {
+// Put сохраняет решение классификатора в кеш с учетом опционального контекста диалога.
+func (c *Cache) Put(provider, model, cmd string, verdict hook.OutputVerdict, contextStr ...string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	store := c.loadStore()
-	key := ComputeKey(provider, model, cmd)
+	key := ComputeKey(provider, model, cmd, contextStr...)
 
 	// Очищаем устаревшие записи, если их накопилось много
 	now := time.Now()

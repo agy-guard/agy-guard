@@ -52,4 +52,21 @@ func TestInstallPluginToDir(t *testing.T) {
 	if hooks.AgyGuard.PreToolUse[0].Hooks[0].Command != binPath {
 		t.Errorf("Hook command = %q, want %q", hooks.AgyGuard.PreToolUse[0].Hooks[0].Command, binPath)
 	}
+
+	// Test RemovePluginDir
+	removedDir, err := RemovePluginDir(tmpDir)
+	if err != nil {
+		t.Fatalf("RemovePluginDir error: %v", err)
+	}
+	if removedDir != tmpDir {
+		t.Errorf("expected removed dir %q, got %q", tmpDir, removedDir)
+	}
+	if _, err := os.Stat(manifestFile); !os.IsNotExist(err) {
+		t.Errorf("manifest file should not exist after remove")
+	}
+
+	// Idempotent remove on non-existent dir
+	if _, err := RemovePluginDir(tmpDir); err != nil {
+		t.Errorf("RemovePluginDir on non-existent dir failed: %v", err)
+	}
 }

@@ -17,6 +17,8 @@ type Config struct {
 	EnableAuditLog           bool        `json:"enable_audit_log"`
 	EnableCache              bool        `json:"enable_cache"`
 	CacheTTLMinutes          int         `json:"cache_ttl_minutes"`
+	UnattendedMode           bool        `json:"unattended_mode"`
+	MaxRetriesBeforeAsk      int         `json:"max_retries_before_ask"`
 	StaticRules              StaticRules `json:"static_rules"`
 }
 
@@ -37,6 +39,8 @@ func DefaultConfig() *Config {
 		EnableAuditLog:           true,
 		EnableCache:              true,
 		CacheTTLMinutes:          10,
+		UnattendedMode:           false,
+		MaxRetriesBeforeAsk:      2,
 		StaticRules: StaticRules{
 			AllowPrefixes: []string{
 				// Go
@@ -227,6 +231,9 @@ func LoadFromFile(path string) (*Config, error) {
 	cfg := DefaultConfig()
 	if err := json.Unmarshal(data, cfg); err != nil {
 		return DefaultConfig(), fmt.Errorf("parse config.json: %w", err)
+	}
+	if cfg.MaxRetriesBeforeAsk <= 0 {
+		cfg.MaxRetriesBeforeAsk = 2
 	}
 	return cfg, nil
 }

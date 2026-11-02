@@ -52,7 +52,7 @@ func InstallPluginToDir(targetDir, absBinPath string) (string, error) {
 	manifest := PluginManifest{
 		Name:        "agy-guard",
 		Description: "Ultra-fast zero-dependency security classifier and PreToolUse hook for Antigravity CLI (agy)",
-		Version:     "0.1.0",
+		Version:     "0.2.0",
 		Homepage:    "https://github.com/agy-guard/agy-guard",
 	}
 	manifestData, err := json.MarshalIndent(manifest, "", "  ")
@@ -69,7 +69,7 @@ func InstallPluginToDir(targetDir, absBinPath string) (string, error) {
 	pluginHooks.AgyGuard.Enabled = true
 	pluginHooks.AgyGuard.PreToolUse = []ToolHookGroup{
 		{
-			Matcher: "*",
+			Matcher: ".*",
 			Hooks: []HookHandler{
 				{
 					Type:    "command",
@@ -89,4 +89,24 @@ func InstallPluginToDir(targetDir, absBinPath string) (string, error) {
 	}
 
 	return targetDir, nil
+}
+
+// RemovePlugin удаляет директорию нативного плагина ~/.gemini/config/plugins/agy-guard.
+func RemovePlugin() (string, error) {
+	dir, err := PluginDir()
+	if err != nil {
+		return "", err
+	}
+	return RemovePluginDir(dir)
+}
+
+// RemovePluginDir удаляет переданную директорию плагина.
+func RemovePluginDir(dir string) (string, error) {
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		return dir, nil
+	}
+	if err := os.RemoveAll(dir); err != nil {
+		return "", fmt.Errorf("remove plugin dir %q: %w", dir, err)
+	}
+	return dir, nil
 }

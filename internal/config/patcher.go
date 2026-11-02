@@ -69,7 +69,7 @@ func PatchHooksFile(path, binPath string) (string, error) {
 	agyGuardEntry := NamedHook{
 		PreToolUse: []ToolHookGroup{
 			{
-				Matcher: "run_command",
+				Matcher: ".*",
 				Hooks: []HookHandler{
 					{
 						Type:    "command",
@@ -85,6 +85,49 @@ func PatchHooksFile(path, binPath string) (string, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return "", fmt.Errorf("create config directory: %w", err)
 	}
+
+	out, err := json.MarshalIndent(hooksMap, "", "  ")
+	if err != nil {
+		return "", fmt.Errorf("marshal hooks.json: %w", err)
+	}
+
+	if err := os.WriteFile(path, out, 0644); err != nil {
+		return "", fmt.Errorf("write hooks.json: %w", err)
+	}
+
+	return path, nil
+}
+
+// UnpatchHooksJSON безопасно удаляет запись "agy-guard" из ~/.gemini/config/hooks.json,
+// сохраняя все остальные хуки пользователя.
+func UnpatchHooksJSON() (string, error) {
+	path, err := HooksConfigPath()
+	if err != nil {
+		return "", err
+	}
+	return UnpatchHooksFile(path)
+}
+
+// UnpatchHooksFile удаляет запись "agy-guard" из переданного файла hooks.json.
+func UnpatchHooksFile(path string) (string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return path, nil
+		}
+		return "", fmt.Errorf("read hooks.json: %w", err)
+	}
+
+	var hooksMap map[string]any
+	if err := json.Unmarshal(data, &hooksMap); err != nil {
+		return "", fmt.Errorf("parse hooks.json: %w", err)
+	}
+
+	if _, exists := hooksMap["agy-guard"]; !exists {
+		return path, nil
+	}
+
+	delete(hooksMap, "agy-guard")
 
 	out, err := json.MarshalIndent(hooksMap, "", "  ")
 	if err != nil {

@@ -94,6 +94,43 @@ func readRawTail(path string, maxBytes int64) []byte {
 	return bytes.TrimSpace(buf)
 }
 
+// ExtractLatestUserRequest находит последнюю команду или запрос пользователя в переданных сырых байтах транскрипта.
+func ExtractLatestUserRequest(raw []byte) string {
+	if len(raw) == 0 {
+		return ""
+	}
+
+	scanner := bufio.NewScanner(bytes.NewReader(raw))
+	buf := make([]byte, 64*1024)
+	scanner.Buffer(buf, 1024*1024)
+
+	var lines []string
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line != "" {
+			lines = append(lines, line)
+		}
+	}
+
+	// Ищем с конца первое сообщение от пользователя
+	for i := len(lines) - 1; i >= 0; i-- {
+		var entry TranscriptEntry
+		if err := json.Unmarshal([]byte(lines[i]), &entry); err == nil {
+			if entry.Type == "USER_INPUT" || entry.Source == "USER_EXPLICIT" {
+				content := cleanContent(strings.TrimSpace(entry.Content))
+				if content != "" {
+					if len(content) > 1000 {
+						content = content[:1000] + "... (truncated)"
+					}
+					return content
+				}
+			}
+		}
+	}
+
+	return ""
+}
+
 func formatRecentTurns(raw []byte, maxTurns int) string {
 	if len(raw) == 0 {
 		return ""
@@ -115,12 +152,15 @@ func formatRecentTurns(raw []byte, maxTurns int) string {
 		return ""
 	}
 
-	if maxTurns > 0 && len(lines) > maxTurns {
-		lines = lines[len(lines)-maxTurns:]
+	latestUserReq := ExtractLatestUserRequest(raw)
+
+	recentLines := lines
+	if maxTurns > 0 && len(recentLines) > maxTurns {
+		recentLines = recentLines[len(recentLines)-maxTurns:]
 	}
 
 	var formattedTurns []string
-	for _, l := range lines {
+	for _, l := range recentLines {
 		var entry TranscriptEntry
 		if err := json.Unmarshal([]byte(l), &entry); err == nil && (entry.Type != "" || entry.Content != "") {
 			role := "STEP"
@@ -146,7 +186,15 @@ func formatRecentTurns(raw []byte, maxTurns int) string {
 		}
 	}
 
-	return strings.Join(formattedTurns, "\n")
+	turnsText := strings.Join(formattedTurns, "\n")
+	if latestUserReq != "" {
+		if len(formattedTurns) > 0 {
+			return fmt.Sprintf("Latest User Request:\n%s\n\nRecent Turns:\n%s", latestUserReq, turnsText)
+		}
+		return fmt.Sprintf("Latest User Request:\n%s", latestUserReq)
+	}
+
+	return turnsText
 }
 
 func cleanContent(s string) string {

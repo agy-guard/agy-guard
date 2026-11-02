@@ -167,6 +167,8 @@ cat <<EOF > "$CONFIG_FILE"
   "enable_audit_log": true,
   "enable_cache": true,
   "cache_ttl_minutes": 10,
+  "unattended_mode": false,
+  "max_retries_before_ask": 2,
   "static_rules": {
     "allow_prefixes": [
       "go test",
@@ -343,4 +345,7 @@ echo ""
 echo "Antigravity CLI ('agy') will now automatically route PreToolUse events through agy-guard."
 echo "You can test any command directly at any time:"
 echo -e "  ${BOLD}agy-guard dry-run \"<command>\"${RESET}"
+echo ""
+echo "To uninstall at any time:"
+echo -e "  ${CYAN}./uninstall.sh${RESET}  (or: ${CYAN}agy-guard uninstall${RESET})"
 echo ""

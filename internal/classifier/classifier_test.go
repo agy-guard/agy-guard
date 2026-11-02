@@ -26,6 +26,12 @@ func TestBuildPrompt(t *testing.T) {
 	if !strings.Contains(prompt, `"decision": "allow" | "ask" | "deny"`) {
 		t.Errorf("prompt does not contain expected JSON schema instructions")
 	}
+	if !strings.Contains(prompt, "CRITICAL INTENT RULE") {
+		t.Errorf("prompt does not contain CRITICAL INTENT RULE")
+	}
+	if !strings.Contains(prompt, "Latest User Request") {
+		t.Errorf("prompt does not reference Latest User Request")
+	}
 }
 
 func TestNewClassifier(t *testing.T) {

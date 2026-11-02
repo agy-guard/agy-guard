@@ -3,6 +3,7 @@ package hook
 import (
 	"bytes"
 	"encoding/json"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -151,5 +152,116 @@ func TestEmit(t *testing.T) {
 	}
 	if parsed.Decision != DecisionAllow || parsed.Reason != "ok" {
 		t.Errorf("unexpected output: %v", parsed)
+	}
+}
+
+func TestFormatDenyReason(t *testing.T) {
+	reason := FormatDenyReason("Suspicious destructive action")
+	if !strings.Contains(reason, "[AGY-GUARD SECURITY BLOCK]") {
+		t.Errorf("expected security block prefix, got %q", reason)
+	}
+	if !strings.Contains(reason, "Suspicious destructive action") {
+		t.Errorf("expected base reason preserved, got %q", reason)
+	}
+	if !strings.Contains(reason, "CRITICAL INSTRUCTION FOR AGENT: Do NOT retry this command") {
+		t.Errorf("expected critical instruction, got %q", reason)
+	}
+
+	// Avoid double-wrapping
+	doubleWrapped := FormatDenyReason(reason)
+	if strings.Count(doubleWrapped, "[AGY-GUARD SECURITY BLOCK]") != 1 {
+		t.Errorf("expected only one prefix when wrapped again, got %q", doubleWrapped)
+	}
+}
+
+func TestExtractTargetFile(t *testing.T) {
+	keys := []string{
+		"TargetFile", "target_file", "targetFile",
+		"file_path", "filePath", "FilePath",
+		"Path", "path",
+		"file", "File",
+		"AbsolutePath", "DirectoryPath",
+	}
+
+	for _, k := range keys {
+		p := &InputPayload{
+			ToolCall: ToolCall{
+				Name: "edit_file",
+				Args: map[string]any{k: "src/main.go"},
+			},
+		}
+		if got := p.ExtractTargetFile(); got != "src/main.go" {
+			t.Errorf("ExtractTargetFile() for key %q = %q, want 'src/main.go'", k, got)
+		}
+	}
+
+	var nilPayload *InputPayload
+	if got := nilPayload.ExtractTargetFile(); got != "" {
+		t.Errorf("expected empty for nil payload, got %q", got)
+	}
+
+	emptyArgs := &InputPayload{ToolCall: ToolCall{Name: "other"}}
+	if got := emptyArgs.ExtractTargetFile(); got != "" {
+		t.Errorf("expected empty for empty args, got %q", got)
+	}
+}
+
+func TestIsSensitiveFile(t *testing.T) {
+	sensitive := []string{
+		".env",
+		".env.local",
+		".env.production",
+		"/path/to/.env",
+		"~/.gemini/config/hooks.json",
+		"hooks.json",
+		"~/.ssh/id_rsa",
+		"~/.ssh/id_ed25519",
+		"~/.ssh/config",
+		".git/config",
+		"~/.bashrc",
+		"~/.zshrc",
+	}
+
+	for _, path := range sensitive {
+		if !IsSensitiveFile(path) {
+			t.Errorf("expected %q to be marked sensitive", path)
+		}
+	}
+
+	safe := []string{
+		"main.go",
+		"src/index.ts",
+		"README.md",
+		"pkg/config/app.go",
+		"internal/environment/env.go",
+	}
+
+	for _, path := range safe {
+		if IsSensitiveFile(path) {
+			t.Errorf("expected %q to be marked safe", path)
+		}
+	}
+}
+
+func TestIsWithinWorkspace(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	tests := []struct {
+		target   string
+		expected bool
+	}{
+		{"main.go", true},
+		{"./src/app.go", true},
+		{filepath.Join(tmpDir, "main.go"), true},
+		{filepath.Join(tmpDir, "internal", "pkg", "foo.go"), true},
+		{"../outside.go", false},
+		{filepath.Join(filepath.Dir(tmpDir), "other_sibling", "main.go"), false},
+	}
+
+	for _, tt := range tests {
+		got := IsWithinWorkspace(tmpDir, tt.target)
+		if got != tt.expected {
+			t.Errorf("IsWithinWorkspace(%q, %q) = %v, want %v", tmpDir, tt.target, got, tt.expected)
+		}
 	}
 }
