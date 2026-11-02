@@ -109,6 +109,7 @@ func DefaultConfig() *Config {
 				"flake8",
 				// Read-only inspection & utility tools
 				"agy-guard",
+				"strings",
 				"ls",
 				"cat",
 				"head",

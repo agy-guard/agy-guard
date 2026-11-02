@@ -52,6 +52,8 @@ func main() {
 		}
 		cmdToTest := strings.Join(args[1:], " ")
 		runDryRun(cmdToTest)
+	case "reset-state", "reset":
+		runResetState()
 	case "help", "-h", "--help":
 		printUsage()
 	default:
@@ -72,6 +74,7 @@ Usage:
   agy-guard uninstall        Unregister hook and remove native Antigravity plugin
   agy-guard uninstall --purge Also delete ~/.agy-guard (config, cache, audit logs)
   agy-guard dry-run "<cmd>"  Evaluate command without running agy and measure evaluation latency
+  agy-guard reset            Reset session state and clear Loop Breaker strikes
   agy-guard help             Show this help message`)
 }
 
@@ -400,6 +403,17 @@ func runDryRun(cmd string) {
 	fmt.Printf("[dry-run] Decision: %s\n", finalVerdict.Decision)
 	if finalVerdict.Reason != "" {
 		fmt.Printf("[dry-run] Reason: %s\n", finalVerdict.Reason)
+	}
+}
+
+func runResetState() {
+	if statePath, err := classifier.DefaultSessionStatePath(); err == nil {
+		_ = os.Remove(statePath)
+		fmt.Printf("[OK] Reset session state: %s\n", statePath)
+	}
+	if cachePath, err := classifier.DefaultCachePath(); err == nil {
+		_ = os.Remove(cachePath)
+		fmt.Printf("[OK] Cleared classifier cache: %s\n", cachePath)
 	}
 }
 
