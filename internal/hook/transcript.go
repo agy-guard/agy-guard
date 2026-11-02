@@ -1,7 +1,6 @@
 package hook
 
 import (
-	"bufio"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -11,8 +10,8 @@ import (
 )
 
 const (
-	// DefaultMaxTranscriptBytes — максимальный объем читаемого хвоста лога (4 KB).
-	DefaultMaxTranscriptBytes int64 = 4096
+	// DefaultMaxTranscriptBytes — максимальный объем читаемого хвоста лога (2 MB).
+	DefaultMaxTranscriptBytes int64 = 2 * 1024 * 1024
 	// DefaultMaxTranscriptTurns — максимальное количество последних шагов контекста.
 	DefaultMaxTranscriptTurns = 3
 )
@@ -107,22 +106,16 @@ func ExtractLatestUserRequest(raw []byte) string {
 		return ""
 	}
 
-	scanner := bufio.NewScanner(bytes.NewReader(raw))
-	buf := make([]byte, 64*1024)
-	scanner.Buffer(buf, 1024*1024)
-
-	var lines []string
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line != "" {
-			lines = append(lines, line)
-		}
-	}
+	lines := bytes.Split(raw, []byte{'\n'})
 
 	// Ищем с конца первое сообщение от пользователя
 	for i := len(lines) - 1; i >= 0; i-- {
+		line := bytes.TrimSpace(lines[i])
+		if len(line) == 0 {
+			continue
+		}
 		var entry TranscriptEntry
-		if err := json.Unmarshal([]byte(lines[i]), &entry); err == nil {
+		if err := json.Unmarshal(line, &entry); err == nil {
 			if entry.Type == "USER_INPUT" || entry.Source == "USER_EXPLICIT" {
 				content := cleanContent(strings.TrimSpace(entry.Content))
 				if content != "" {
@@ -143,15 +136,12 @@ func formatRecentTurns(raw []byte, maxTurns int) string {
 		return ""
 	}
 
-	scanner := bufio.NewScanner(bytes.NewReader(raw))
-	buf := make([]byte, 64*1024)
-	scanner.Buffer(buf, 1024*1024)
-
+	rawLines := bytes.Split(raw, []byte{'\n'})
 	var lines []string
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line != "" {
-			lines = append(lines, line)
+	for _, l := range rawLines {
+		trimmed := strings.TrimSpace(string(l))
+		if trimmed != "" {
+			lines = append(lines, trimmed)
 		}
 	}
 
