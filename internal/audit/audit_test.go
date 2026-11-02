@@ -65,7 +65,9 @@ func TestLogRecord(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to open expected audit file %s: %v", expectedFile, err)
 	}
-	defer f.Close()
+	defer func() {
+		_ = f.Close()
+	}()
 
 	var records []Record
 	scanner := bufio.NewScanner(f)

@@ -88,7 +88,9 @@ func (o *OllamaClassifier) Evaluate(ctx context.Context, cmd string, transcript 
 	if err != nil {
 		return hook.OutputVerdict{}, fmt.Errorf("ollama http request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {

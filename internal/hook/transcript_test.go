@@ -63,8 +63,8 @@ func TestReadTranscriptTail_LargeFileSeek(t *testing.T) {
 	// Generate ~10KB of lines
 	var sb strings.Builder
 	for i := 0; i < 100; i++ {
-		sb.WriteString(fmt.Sprintf(`{"step_index":%d,"source":"USER_EXPLICIT","type":"USER_INPUT","content":"Step %d padding data %s"}`+"\n",
-			i, i, strings.Repeat("A", 100)))
+		fmt.Fprintf(&sb, `{"step_index":%d,"source":"USER_EXPLICIT","type":"USER_INPUT","content":"Step %d padding data %s"}`+"\n",
+			i, i, strings.Repeat("A", 100))
 	}
 	sb.WriteString(`{"step_index":101,"source":"USER_EXPLICIT","type":"USER_INPUT","content":"Final user instruction"}` + "\n")
 

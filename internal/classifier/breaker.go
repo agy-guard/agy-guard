@@ -42,11 +42,12 @@ func NewLoopBreaker(filePath string) *LoopBreaker {
 
 // NormalizeCommandClass нормализует строку команды до базового 2-токенного класса действия.
 // Например:
-//   "git push origin main"     -> "git push"
-//   "git push -u origin HEAD"  -> "git push"
-//   "rm -rf ./dist"            -> "rm -rf"
-//   "Remove-Item -Recurse dir" -> "remove-item -recurse"
-//   "reboot"                   -> "reboot"
+//
+//	"git push origin main"     -> "git push"
+//	"git push -u origin HEAD"  -> "git push"
+//	"rm -rf ./dist"            -> "rm -rf"
+//	"Remove-Item -Recurse dir" -> "remove-item -recurse"
+//	"reboot"                   -> "reboot"
 func NormalizeCommandClass(cmd string) string {
 	trimmed := strings.TrimSpace(cmd)
 	if trimmed == "" {

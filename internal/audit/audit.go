@@ -55,7 +55,7 @@ func SanitizeSessionID(sessionID string) string {
 }
 
 // LogRecord записывает структуру Record в структурированный JSONL-файл в указанную директорию.
-func LogRecord(auditDir string, rec Record) error {
+func LogRecord(auditDir string, rec Record) (err error) {
 	if strings.TrimSpace(rec.Timestamp) == "" {
 		rec.Timestamp = time.Now().UTC().Format(time.RFC3339)
 	}
@@ -80,7 +80,11 @@ func LogRecord(auditDir string, rec Record) error {
 	if err != nil {
 		return fmt.Errorf("open audit file: %w", err)
 	}
-	defer f.Close()
+	defer func() {
+		if closeErr := f.Close(); closeErr != nil && err == nil {
+			err = fmt.Errorf("close audit file: %w", closeErr)
+		}
+	}()
 
 	if _, err := f.Write(data); err != nil {
 		return fmt.Errorf("write audit record: %w", err)

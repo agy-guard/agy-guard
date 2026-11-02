@@ -199,6 +199,7 @@ cat <<EOF > "$CONFIG_FILE"
       "go env",
       "go version",
       "go doc",
+      "golangci-lint",
       "git status",
       "git diff",
       "git log",

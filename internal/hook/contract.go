@@ -224,7 +224,7 @@ func FormatVerdict(verdict OutputVerdict) []byte {
 
 // Emit печатает валидный JSON в указанный io.Writer.
 func Emit(w io.Writer, verdict OutputVerdict) {
-	fmt.Fprintln(w, string(FormatVerdict(verdict)))
+	_, _ = fmt.Fprintln(w, string(FormatVerdict(verdict)))
 }
 
 // EmitAndExit печатает валидный JSON в stdout и ВСЕГДА завершает процесс с кодом 0.

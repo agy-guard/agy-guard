@@ -60,7 +60,9 @@ func readRawTail(path string, maxBytes int64) []byte {
 	if err != nil {
 		return nil
 	}
-	defer f.Close()
+	defer func() {
+		_ = f.Close()
+	}()
 
 	stat, err := f.Stat()
 	if err != nil || stat.Size() == 0 {

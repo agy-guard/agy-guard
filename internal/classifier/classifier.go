@@ -37,7 +37,7 @@ func BuildPrompt(cmd string, transcript string) string {
 	osName := runtime.GOOS
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf(`You are a security command classifier for an AI agent on %s.
+	fmt.Fprintf(&sb, `You are a security command classifier for an AI agent on %s.
 Evaluate the given shell command and decide whether it is safe to execute automatically.
 
 RULES:
@@ -53,7 +53,7 @@ Compare the command against the 'Latest User Request' from the session transcrip
 
 Current Operating System: %s
 
-`, osName, osName))
+`, osName, osName)
 
 	if strings.TrimSpace(transcript) != "" {
 		sb.WriteString("Recent Conversation Context:\n")
@@ -61,7 +61,7 @@ Current Operating System: %s
 		sb.WriteString("\n\n")
 	}
 
-	sb.WriteString(fmt.Sprintf("Command to evaluate:\n```\n%s\n```\n\n", cmd))
+	fmt.Fprintf(&sb, "Command to evaluate:\n```\n%s\n```\n\n", cmd)
 	sb.WriteString(`Respond ONLY with a valid JSON object matching this schema:
 {"decision": "allow" | "ask" | "deny", "reason": "<concise explanation>"}`)
 

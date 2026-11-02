@@ -31,7 +31,7 @@ func TestGeminiClassifier_Success(t *testing.T) {
 		}`
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(resp))
+		_, _ = w.Write([]byte(resp))
 	}))
 	defer ts.Close()
 
@@ -61,7 +61,7 @@ func TestGeminiClassifier_MissingAPIKey(t *testing.T) {
 func TestGeminiClassifier_ServerError(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(`{"error": {"code": 500, "message": "internal error"}}`))
+		_, _ = w.Write([]byte(`{"error": {"code": 500, "message": "internal error"}}`))
 	}))
 	defer ts.Close()
 
@@ -89,7 +89,7 @@ func TestGeminiClassifier_MalformedJSON(t *testing.T) {
 		}`
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(resp))
+		_, _ = w.Write([]byte(resp))
 	}))
 	defer ts.Close()
 

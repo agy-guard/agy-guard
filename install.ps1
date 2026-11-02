@@ -168,7 +168,7 @@ $ConfigObj = [ordered]@{
     "max_retries_before_ask"     = 2
     "static_rules"               = [ordered]@{
         "allow_prefixes"  = @(
-            "go test", "go build", "go vet", "go list", "go mod tidy", "go fmt", "go env", "go version", "go doc",
+            "go test", "go build", "go vet", "go list", "go mod tidy", "go fmt", "go env", "go version", "go doc", "golangci-lint",
             "git status", "git diff", "git log", "git branch", "git show", "git rev-parse", "git remote", "git tag", "git ls-files", "git describe", "git blame",
             "cargo check", "cargo test", "cargo build", "cargo clippy", "cargo fmt", "cargo doc",
             "npm test", "npm run test", "npm run lint", "npm run build", "npm run typecheck", "npm ls",

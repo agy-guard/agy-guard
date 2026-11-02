@@ -25,7 +25,7 @@ func TestOllamaClassifier_Success(t *testing.T) {
 		}`
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(resp))
+		_, _ = w.Write([]byte(resp))
 	}))
 	defer ts.Close()
 
@@ -46,7 +46,7 @@ func TestOllamaClassifier_Success(t *testing.T) {
 func TestOllamaClassifier_ServerError(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
-		w.Write([]byte(`{"error": "model 'llama3.2' not found"}`))
+		_, _ = w.Write([]byte(`{"error": "model 'llama3.2' not found"}`))
 	}))
 	defer ts.Close()
 
@@ -67,7 +67,7 @@ func TestOllamaClassifier_MalformedJSON(t *testing.T) {
 		}`
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(resp))
+		_, _ = w.Write([]byte(resp))
 	}))
 	defer ts.Close()
 

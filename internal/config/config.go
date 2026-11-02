@@ -53,6 +53,7 @@ func DefaultConfig() *Config {
 				"go env",
 				"go version",
 				"go doc",
+				"golangci-lint",
 				// Git read-only
 				"git status",
 				"git diff",
