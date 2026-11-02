@@ -19,12 +19,16 @@ const (
 
 // InputPayload описывает входящий JSON от Antigravity CLI на событии PreToolUse.
 type InputPayload struct {
-	SessionID      string   `json:"sessionId,omitempty"`
-	ConversationID string   `json:"conversationId,omitempty"`
-	TranscriptPath string   `json:"transcriptPath,omitempty"`
-	Cwd            string   `json:"cwd,omitempty"`
-	HookEventName  string   `json:"hookEventName,omitempty"`
-	ToolCall       ToolCall `json:"toolCall"`
+	SessionID             string   `json:"sessionId,omitempty"`
+	ConversationID        string   `json:"conversationId,omitempty"`
+	TranscriptPath        string   `json:"transcriptPath,omitempty"`
+	ArtifactDirectoryPath string   `json:"artifactDirectoryPath,omitempty"`
+	WorkspacePaths        []string `json:"workspacePaths,omitempty"`
+	Cwd                   string   `json:"cwd,omitempty"`
+	HookEventName         string   `json:"hookEventName,omitempty"`
+	LastUserInput         string   `json:"lastUserInput,omitempty"`
+	StepIdx               int      `json:"stepIdx,omitempty"`
+	ToolCall              ToolCall `json:"toolCall"`
 }
 
 type ToolCall struct {
@@ -128,43 +132,63 @@ func IsSensitiveFile(targetFile string) bool {
 	return false
 }
 
-// IsWithinWorkspace проверяет, находится ли targetFile внутри рабочей директории cwd.
-func IsWithinWorkspace(cwd, targetFile string) bool {
+// IsWithinWorkspaces проверяет, находится ли targetFile внутри хотя бы одного из воркспейсов или cwd.
+func IsWithinWorkspaces(workspaces []string, cwd, targetFile string) bool {
 	cleanTarget := strings.TrimSpace(targetFile)
-	cleanCwd := strings.TrimSpace(cwd)
 	if cleanTarget == "" {
 		return true
 	}
-	if cleanCwd == "" {
-		var err error
-		cleanCwd, err = os.Getwd()
-		if err != nil || cleanCwd == "" {
+
+	// Относительные пути без выхода за пределы (например, "foo.go", "./src/app.go") считаются внутри воркспейса
+	if !filepath.IsAbs(cleanTarget) && !strings.HasPrefix(cleanTarget, "..") {
+		return true
+	}
+
+	absTarget := filepath.Clean(cleanTarget)
+
+	roots := make([]string, 0, len(workspaces)+1)
+	for _, ws := range workspaces {
+		if trimmed := strings.TrimSpace(ws); trimmed != "" {
+			if abs, err := filepath.Abs(trimmed); err == nil {
+				roots = append(roots, abs)
+			}
+		}
+	}
+	if trimmedCwd := strings.TrimSpace(cwd); trimmedCwd != "" {
+		if abs, err := filepath.Abs(trimmedCwd); err == nil {
+			roots = append(roots, abs)
+		}
+	}
+
+	if len(roots) == 0 {
+		if current, err := os.Getwd(); err == nil && current != "" {
+			if abs, err := filepath.Abs(current); err == nil {
+				roots = append(roots, abs)
+			}
+		}
+	}
+
+	// Проверяем, входит ли absTarget хотя бы в один из корней
+	for _, root := range roots {
+		rel, err := filepath.Rel(root, absTarget)
+		if err != nil {
+			continue
+		}
+		if rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 			return true
 		}
 	}
 
-	absCwd, err := filepath.Abs(cleanCwd)
-	if err != nil {
-		return true
-	}
+	return false
+}
 
-	var absTarget string
-	if filepath.IsAbs(cleanTarget) {
-		absTarget = filepath.Clean(cleanTarget)
-	} else {
-		absTarget = filepath.Clean(filepath.Join(absCwd, cleanTarget))
+// IsWithinWorkspace проверяет, находится ли targetFile внутри рабочей директории cwd (для обратной совместимости).
+func IsWithinWorkspace(cwd, targetFile string) bool {
+	var ws []string
+	if cwd != "" {
+		ws = []string{cwd}
 	}
-
-	rel, err := filepath.Rel(absCwd, absTarget)
-	if err != nil {
-		return false
-	}
-
-	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return false
-	}
-
-	return true
+	return IsWithinWorkspaces(ws, cwd, targetFile)
 }
 
 // FormatDenyReason оборачивает причину отказа в строгую стоп-инструкцию для AI-агента,

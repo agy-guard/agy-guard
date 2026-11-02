@@ -118,6 +118,9 @@ func runHookMode() {
 			return
 		}
 		cwd := payload.Cwd
+		if cwd == "" && len(payload.WorkspacePaths) > 0 {
+			cwd = payload.WorkspacePaths[0]
+		}
 		if cwd == "" {
 			cwd, _ = os.Getwd()
 		}
@@ -456,8 +459,8 @@ func evaluateNonCommandTool(payload *hook.InputPayload, cfg *config.Config, brea
 		return v, "file_sensitive", true
 	}
 
-	// Проверка 2 (Границы воркспейса): защита от записи за пределы рабочей директории (cwd)
-	if !hook.IsWithinWorkspace(payload.Cwd, targetFile) {
+	// Проверка 2 (Границы воркспейса): защита от записи за пределы рабочей директории (workspacePaths / cwd)
+	if !hook.IsWithinWorkspaces(payload.WorkspacePaths, payload.Cwd, targetFile) {
 		v := applyPolicy(hook.OutputVerdict{
 			Decision: hook.DecisionAsk,
 			Reason:   "Agent is attempting to modify/access file outside current workspace: " + targetFile,

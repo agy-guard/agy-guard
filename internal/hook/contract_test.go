@@ -265,3 +265,36 @@ func TestIsWithinWorkspace(t *testing.T) {
 		}
 	}
 }
+
+func TestIsWithinWorkspaces_MultipleAndFallback(t *testing.T) {
+	ws1 := t.TempDir()
+	ws2 := t.TempDir()
+	other := t.TempDir()
+
+	workspaces := []string{ws1, ws2}
+
+	// File inside first workspace
+	if !IsWithinWorkspaces(workspaces, "", filepath.Join(ws1, "cmd", "main.go")) {
+		t.Errorf("expected file in ws1 to be within workspaces")
+	}
+
+	// File inside second workspace
+	if !IsWithinWorkspaces(workspaces, "", filepath.Join(ws2, "pkg", "lib.go")) {
+		t.Errorf("expected file in ws2 to be within workspaces")
+	}
+
+	// Relative path
+	if !IsWithinWorkspaces(workspaces, "", "internal/rules/static.go") {
+		t.Errorf("expected relative path to be within workspaces")
+	}
+
+	// File outside both workspaces
+	if IsWithinWorkspaces(workspaces, "", filepath.Join(other, "secret.go")) {
+		t.Errorf("expected file in other dir to be outside workspaces")
+	}
+
+	// Relative traversal escaping
+	if IsWithinWorkspaces(workspaces, "", "../escaping.go") {
+		t.Errorf("expected escaping relative path to be outside workspaces")
+	}
+}

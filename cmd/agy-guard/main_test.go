@@ -127,6 +127,35 @@ func TestEvaluateNonCommandTool_WorkspaceFile(t *testing.T) {
 	}
 }
 
+func TestEvaluateNonCommandTool_WorkspacePathsWithoutCwd(t *testing.T) {
+	cfg := config.DefaultConfig()
+	workspaceDir := t.TempDir()
+	pluginDir := t.TempDir() // Cwd points to plugin directory, not workspace!
+	target := filepath.Join(workspaceDir, "src", "app.go")
+
+	payload := &hook.InputPayload{
+		Cwd:            pluginDir,
+		WorkspacePaths: []string{workspaceDir},
+		ToolCall: hook.ToolCall{
+			Name: "edit_file",
+			Args: map[string]any{
+				"TargetFile": target,
+			},
+		},
+	}
+
+	verdict, tier, handled := evaluateNonCommandTool(payload, cfg, nil)
+	if !handled {
+		t.Fatalf("expected tool to be handled by non-command filter")
+	}
+	if verdict.Decision != hook.DecisionAllow {
+		t.Errorf("expected DecisionAllow for WorkspacePaths, got %v", verdict.Decision)
+	}
+	if tier != "file_fast_path" {
+		t.Errorf("expected tier 'file_fast_path', got %q", tier)
+	}
+}
+
 func TestEvaluateNonCommandTool_SensitiveFile(t *testing.T) {
 	cfg := config.DefaultConfig()
 	tmpDir := t.TempDir()
