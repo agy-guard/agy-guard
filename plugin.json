@@ -1,0 +1,10 @@
+{
+  "name": "agy-guard",
+  "description": "Ultra-fast zero-dependency security classifier and PreToolUse hook for Antigravity CLI (agy)",
+  "version": "0.1.0",
+  "homepage": "https://github.com/agy-guard/agy-guard",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/agy-guard/agy-guard"
+  }
+}

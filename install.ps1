@@ -1,0 +1,173 @@
+# ==============================================================================
+# agy-guard: Quick Plugin Installer & Configuration Setup (Windows PowerShell)
+# ==============================================================================
+[CmdletBinding()]
+param()
+
+$ErrorActionPreference = "Stop"
+
+Write-Host "    ___    _______  __     _______  _____    ____  ____ " -ForegroundColor Cyan
+Write-Host "   /   |  / ____/ \/ /    / ____/ / / /   |  / __ \/ __ \" -ForegroundColor Cyan
+Write-Host "  / /| | / / __  \  /    / / __/ / / / /| | / /_/ / / / /" -ForegroundColor Cyan
+Write-Host " / ___ |/ /_/ /  / /    / /_/ / /_/ / ___ |/ _, _/ /_/ / " -ForegroundColor Cyan
+Write-Host "/_/  |_|\____/  /_/     \____/\____/_/  |_/_/ |_/_____/  " -ForegroundColor Cyan
+Write-Host ""
+Write-Host "🛡️  agy-guard: Security Classifier for Antigravity CLI (agy)" -ForegroundColor Cyan
+Write-Host "------------------------------------------------------------------"
+
+$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$UserHome = [System.Environment]::GetFolderPath([System.Environment+SpecialFolder]::UserProfile)
+$ConfigDir = Join-Path $UserHome ".agy-guard"
+$ConfigFile = Join-Path $ConfigDir "config.json"
+$PluginDir = Join-Path $UserHome ".gemini\config\plugins\agy-guard"
+$LocalBinDir = Join-Path $UserHome ".local\bin"
+
+New-Item -ItemType Directory -Force -Path $ConfigDir | Out-Null
+New-Item -ItemType Directory -Force -Path $LocalBinDir | Out-Null
+New-Item -ItemType Directory -Force -Path $PluginDir | Out-Null
+
+# ------------------------------------------------------------------------------
+# 1. Build / Locate Binary
+# ------------------------------------------------------------------------------
+Write-Host "`n[1/4] Building agy-guard binary..." -ForegroundColor Yellow
+
+$ExePath = Join-Path $LocalBinDir "agy-guard.exe"
+
+if (Get-Command go -ErrorAction SilentlyContinue) {
+    Write-Host "Compiling from source with Go..."
+    Push-Location $ScriptDir
+    try {
+        go build -o "$ScriptDir\agy-guard.exe" .\cmd\agy-guard
+        Copy-Item -Path "$ScriptDir\agy-guard.exe" -Destination $ExePath -Force
+        Write-Host "✓ Binary built and installed to: $ExePath" -ForegroundColor Green
+    }
+    finally {
+        Pop-Location
+    }
+} elseif (Test-Path "$ScriptDir\agy-guard.exe") {
+    Copy-Item -Path "$ScriptDir\agy-guard.exe" -Destination $ExePath -Force
+    Write-Host "✓ Using existing binary installed to: $ExePath" -ForegroundColor Green
+} else {
+    Write-Error "Go compiler ('go') not found and no pre-built agy-guard.exe exists. Please install Go (https://go.dev)."
+}
+
+# ------------------------------------------------------------------------------
+# 2. Interactive Model Provider Selection
+# ------------------------------------------------------------------------------
+Write-Host "`n[2/4] Configure LLM Classifier Provider (Tier 3)..." -ForegroundColor Yellow
+Write-Host "Select the model provider to evaluate ambiguous/unrecognized shell commands:"
+Write-Host "  1) Google Gemini (Recommended - ultra fast, free API key at https://aistudio.google.com)"
+Write-Host "  2) Local Ollama  (100% offline & private, runs locally)"
+
+$ProviderChoice = Read-Host "Enter choice [1/2] (default: 1)"
+if ([string]::IsNullOrWhiteSpace($ProviderChoice)) { $ProviderChoice = "1" }
+
+$SelectedProvider = "gemini"
+$SelectedModel = "gemini-3.5-flash-lite"
+$ApiKey = "YOUR_GEMINI_API_KEY_HERE"
+$OllamaUrl = "http://localhost:11434"
+
+if ($ProviderChoice -eq "2") {
+    $SelectedProvider = "ollama"
+    $InputUrl = Read-Host "Enter Ollama URL [http://localhost:11434]"
+    if (-not [string]::IsNullOrWhiteSpace($InputUrl)) { $OllamaUrl = $InputUrl }
+
+    $InputModel = Read-Host "Enter Ollama Model [llama3.2]"
+    if (-not [string]::IsNullOrWhiteSpace($InputModel)) { $SelectedModel = $InputModel }
+    else { $SelectedModel = "llama3.2" }
+    Write-Host "✓ Selected Ollama ($SelectedModel) at $OllamaUrl" -ForegroundColor Green
+} else {
+    $SelectedProvider = "gemini"
+    $InputModel = Read-Host "Enter Gemini Model [gemini-3.5-flash-lite]"
+    if (-not [string]::IsNullOrWhiteSpace($InputModel)) { $SelectedModel = $InputModel }
+
+    # Check env
+    $EnvKey = $env:GEMINI_API_KEY
+    if (-not [string]::IsNullOrWhiteSpace($EnvKey)) {
+        $KeyMask = $EnvKey.Substring(0, [Math]::Min(6, $EnvKey.Length)) + "..."
+        $UseEnv = Read-Host "Found GEMINI_API_KEY in environment ($KeyMask). Use this? [Y/n]"
+        if ([string]::IsNullOrWhiteSpace($UseEnv) -or $UseEnv -match "^[Yy]") {
+            $ApiKey = $EnvKey
+        }
+    }
+
+    if ($ApiKey -eq "YOUR_GEMINI_API_KEY_HERE") {
+        Write-Host "Get a free Gemini API key from: https://aistudio.google.com" -ForegroundColor Cyan
+        $InputKey = Read-Host "Enter your Gemini API Key"
+        if (-not [string]::IsNullOrWhiteSpace($InputKey)) {
+            $ApiKey = $InputKey.Trim()
+        } else {
+            Write-Host "Warning: No API key provided. You can add it later to ~/.agy-guard/config.json" -ForegroundColor Yellow
+        }
+    }
+    Write-Host "✓ Selected Gemini ($SelectedModel)" -ForegroundColor Green
+}
+
+# ------------------------------------------------------------------------------
+# 3. Write / Update ~/.agy-guard/config.json
+# ------------------------------------------------------------------------------
+Write-Host "`n[3/4] Writing configuration to $ConfigFile..." -ForegroundColor Yellow
+
+$EscapedExePath = $ExePath.Replace("\", "\\")
+
+$ConfigObj = [ordered]@{
+    "provider"                   = $SelectedProvider
+    "model"                      = $SelectedModel
+    "api_key"                    = $ApiKey
+    "ollama_url"                 = $OllamaUrl
+    "timeout_sec"                = 8
+    "include_transcript_context" = $true
+    "enable_audit_log"           = $true
+    "enable_cache"               = $true
+    "cache_ttl_minutes"          = 10
+    "static_rules"               = [ordered]@{
+        "allow_prefixes"  = @(
+            "go test", "go build", "go vet", "go list", "go mod tidy", "go fmt", "go env", "go version", "go doc",
+            "git status", "git diff", "git log", "git branch", "git show", "git rev-parse", "git remote", "git tag", "git ls-files", "git describe", "git blame",
+            "cargo check", "cargo test", "cargo build", "cargo clippy", "cargo fmt", "cargo doc",
+            "npm test", "npm run test", "npm run lint", "npm run build", "npm run typecheck", "npm ls",
+            "yarn test", "pnpm test", "npx eslint", "npx tsc", "npx prettier --check", "bun test",
+            "pytest", "python -m unittest", "python3 -m unittest", "python -m pytest", "python3 -m pytest", "ruff check", "black --check", "mypy", "flake8",
+            "ls", "cat", "head", "tail", "grep", "egrep", "fgrep", "rg", "ag", "find", "pwd", "echo", "printf", "wc", "uname", "which", "stat", "file", "diff", "jq", "sort", "uniq", "tree"
+        )
+        "deny_substrings" = @(
+            ".env", "id_rsa", "id_ed25519", "id_ecdsa", "gh auth token", "aws_secret_access_key", "google_api_key", "gemini_api_key", "openai_api_key", "anthropic_api_key", "authorization: bearer", "bearer eyj", "private key-----", ".git-credentials", "/etc/shadow", "/etc/sudoers",
+            "sudo ", "doas ", "su -", "su ", "runas ", "gsudo ",
+            "| sh", "| bash", "| zsh", "| dash", "| powershell", "| pwsh", "| cmd", "|sh", "|bash", "|zsh", "|pwsh",
+            "git push -f", "git push --force", "git reset --hard", "git reset --merge", "git clean -f", "git clean -fd", "git clean -fx", "git checkout .", "git restore .", "git branch -d", "git stash drop", "git stash clear",
+            ".git/", ".bashrc", ".zshrc", ".profile", ".bash_profile", "config.fish",
+            "rm -rf /", "rm -rf ~", "rm -rf `$home", "rm -rf *", "rm -fr /", "rm -fr ~", "rm -fr `$home", "rm -fr *",
+            "mkfs", "dd if=", "format c:", "Format-Volume", "Remove-Item -Recurse -Force C:\", "Stop-Computer", "shutdown ", "reboot ", ":(){ :|:& };:"
+        )
+    }
+}
+
+$JsonConfig = $ConfigObj | ConvertTo-Json -Depth 5
+[System.IO.File]::WriteAllText($ConfigFile, $JsonConfig, [System.Text.Encoding]::UTF8)
+Write-Host "✓ Config saved at: $ConfigFile" -ForegroundColor Green
+
+# ------------------------------------------------------------------------------
+# 4. Register Plugin in Antigravity CLI
+# ------------------------------------------------------------------------------
+Write-Host "`n[4/4] Registering agy-guard as native Antigravity plugin..." -ForegroundColor Yellow
+& $ExePath init --plugin
+& $ExePath init | Out-Null
+
+# ------------------------------------------------------------------------------
+# Verification
+# ------------------------------------------------------------------------------
+Write-Host "`nRunning verification self-test..." -ForegroundColor Yellow
+& $ExePath dry-run "go test ./..."
+
+Write-Host "`n==================================================================" -ForegroundColor Green
+Write-Host "🎉 agy-guard installed and configured successfully!" -ForegroundColor Green
+Write-Host "==================================================================" -ForegroundColor Green
+Write-Host "• Binary path:      $ExePath" -ForegroundColor Cyan
+Write-Host "• Plugin location:  $PluginDir" -ForegroundColor Cyan
+Write-Host "• Configuration:    $ConfigFile" -ForegroundColor Cyan
+Write-Host "• Audit logs:       $ConfigDir\audit" -ForegroundColor Cyan
+Write-Host ""
+Write-Host "Antigravity CLI ('agy') will now automatically route PreToolUse events through agy-guard."
+Write-Host "You can test any command directly at any time:"
+Write-Host "  agy-guard dry-run `"<command>`"" -ForegroundColor White
+Write-Host ""

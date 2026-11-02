@@ -1,0 +1,30 @@
+# Binaries for programs and plugins
+/agy-guard
+/agy-guard.exe
+dist/
+bin/
+
+# Project internal agent docs
+TODO.md
+AGENTS.md
+
+# IDE and Editor Files
+.idea/
+.vscode/
+*.iml
+*.swp
+*.swo
+
+# OS Files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Test & coverage artifacts
+*.out
+coverage.txt
+profile.cov

@@ -1,0 +1,17 @@
+{
+  "agy-guard": {
+    "enabled": true,
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "agy-guard",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  }
+}
