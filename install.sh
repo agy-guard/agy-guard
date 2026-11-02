@@ -324,9 +324,6 @@ echo -e "${GREEN}✓ Config saved at: $CONFIG_FILE (permissions 0600)${RESET}"
 echo -e "\n${BOLD}[4/4] Registering agy-guard as native Antigravity plugin...${RESET}"
 "$BIN_PATH" init --plugin
 
-# Also register in global hooks.json for fallback compatibility
-"$BIN_PATH" init >/dev/null 2>&1 || true
-
 # ------------------------------------------------------------------------------
 # Verification & Self-Test
 # ------------------------------------------------------------------------------

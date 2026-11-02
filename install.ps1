@@ -176,7 +176,6 @@ Write-Host "✓ Config saved at: $ConfigFile" -ForegroundColor Green
 # ------------------------------------------------------------------------------
 Write-Host "`n[4/4] Registering agy-guard as native Antigravity plugin..." -ForegroundColor Yellow
 & $ExePath init --plugin
-& $ExePath init | Out-Null
 
 # ------------------------------------------------------------------------------
 # Verification
